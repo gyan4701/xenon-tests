@@ -1,12 +1,38 @@
-const { test } = require('@playwright/test');
+const { test, expect } =
+  require('@playwright/test')
 
-test('FORCE timeout on New button', async ({ page }) => {
+test(
+  'Open Google and print title',
 
-  await page.goto('https://orgfarm-5694adb5bf-dev-ed.develop.lightning.force.com/lightning/page/home');
+  async ({ page }) => {
 
-  await page.locator('a[title="Leads"]').click();
+    // Open Google
 
-  await page.waitForSelector('button[name="New"]', { timeout: 15000 });
+    await page.goto(
+      'https://www.google.com'
+    )
 
-  await page.click('button[name="New"]');
-});
+    // Wait for page load
+
+    await page.waitForLoadState(
+      'domcontentloaded'
+    )
+
+    // Get title
+
+    const title =
+      await page.title()
+
+    // Print title
+
+    console.log(
+      'Page Title:',
+      title
+    )
+
+    // Validation
+
+    await expect(page)
+      .toHaveTitle(/Google/)
+  }
+)
