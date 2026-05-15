@@ -81,6 +81,13 @@
     "toastMessage": {
       "type": "css",
       "value": "span.toastMessage"
+    },
+    "state": {
+      "type": "css",
+      "value": "visible",
+      "source": "TC044",
+      "firstSeen": "2026-05-15",
+      "lastUsed": "2026-05-15"
     }
   }
 }
