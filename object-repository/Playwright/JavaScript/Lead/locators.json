@@ -69,6 +69,18 @@
       "source": "TC131",
       "firstSeen": "2026-01-21",
       "lastUsed": "2026-01-21"
+    },
+    "leadsMenuItem": {
+      "type": "css",
+      "value": "one-app-launcher-menu-item >> text=Leads"
+    },
+    "leadsPageHeader": {
+      "type": "css",
+      "value": "div.slds-page-header__title"
+    },
+    "toastMessage": {
+      "type": "css",
+      "value": "span.toastMessage"
     }
   }
 }
