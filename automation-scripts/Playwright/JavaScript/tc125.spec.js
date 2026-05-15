@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 test.describe('Salesforce Lead Creation', () => {
   test('Verify successful Lead creation with required fields', async ({ page }) => {
     // 🔹 Increase timeout
-    test.setTimeout(120000);
+    test.setTimeout(20000);
 
     // ✅ Start directly on Lightning - session is already authenticated via storageState.json!
     // No login needed - the system automatically loads storageState.json
@@ -11,7 +11,7 @@ test.describe('Salesforce Lead Creation', () => {
     
    
     // ---------------- APP LAUNCHER ----------------
-    await page.waitForSelector('button[title="App Launcher"]', { timeout: 60000 });
+    await page.waitForSelector('button[title="App Launcher"]', { timeout: 30000 });
     await page.click('button[title="App Launcher"]');
     
     // Click View All
