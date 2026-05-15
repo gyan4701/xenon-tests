@@ -18,6 +18,10 @@
       "source": "TC003",
       "firstSeen": "2026-05-15",
       "lastUsed": "2026-05-15"
+    },
+    "globalSearchInput": {
+      "type": "css",
+      "value": "input.search-container__input"
     }
   }
 }
