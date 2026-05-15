@@ -11,7 +11,7 @@ test.describe('Salesforce Lead Creation', () => {
     
    
     // ---------------- APP LAUNCHER ----------------
-    await page.waitForSelector('button[title="App Launcher"]', { timeout: 30000 });
+    await page.waitForSelector('button[title="App Launcher"]', { timeout: 20000 });
     await page.click('button[title="App Launcher"]');
     
     // Click View All
