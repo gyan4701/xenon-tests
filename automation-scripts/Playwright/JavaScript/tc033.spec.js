@@ -1,38 +1,19 @@
-const { test, expect } =
-  require('@playwright/test')
+import { test, expect } from '@playwright/test';
 
-test(
-  'Open Google and print title',
+test('Login to Sauce Demo and validate Products page', async ({ page }) => {
+  await page.goto('https://www.saucedemo.com/');
 
-  async ({ page }) => {
+  await page.locator('#user-name').fill('standard_user');
+  await page.locator('#password').fill('secret_sauce');
 
-    // Open Google
+  await page.locator('#login-button').click();
 
-    await page.goto(
-      'https://www.google.com'
-    )
+  await expect(page).toHaveURL(/inventory/);
 
-    // Wait for page load
+  await expect(page.locator('.title')).toHaveText('Products');
 
-    await page.waitForLoadState(
-      'domcontentloaded'
-    )
-
-    // Get title
-
-    const title =
-      await page.title()
-
-    // Print title
-
-    console.log(
-      'Page Title:',
-      title
-    )
-
-    // Validation
-
-    await expect(page)
-      .toHaveTitle(/Google/)
-  }
-)
+  await page.screenshot({
+    path: 'screenshots/login-success.png',
+    fullPage: true
+  });
+});
