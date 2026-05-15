@@ -1,3 +1,12 @@
 {
-  "AccountPage": {}
+  "AccountPage": {
+    "modalErrorMessageList": {
+      "type": "css",
+      "value": "div.modal-body ul.errors-list"
+    },
+    "spinner": {
+      "type": "css",
+      "value": "div.slds-spinner_container"
+    }
+  }
 }
