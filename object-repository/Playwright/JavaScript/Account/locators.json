@@ -7,6 +7,10 @@
     "spinner": {
       "type": "css",
       "value": "div.slds-spinner_container"
+    },
+    "accountRecordNameHeader": {
+      "type": "css",
+      "value": "h1 .slds-page-header__title"
     }
   }
 }
