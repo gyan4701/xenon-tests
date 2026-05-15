@@ -11,6 +11,13 @@
     "accountRecordNameHeader": {
       "type": "css",
       "value": "h1 .slds-page-header__title"
+    },
+    "state": {
+      "type": "css",
+      "value": "visible",
+      "source": "TC003",
+      "firstSeen": "2026-05-15",
+      "lastUsed": "2026-05-15"
     }
   }
 }
