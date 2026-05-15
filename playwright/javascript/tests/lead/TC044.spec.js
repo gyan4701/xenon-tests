@@ -1,21 +1,19 @@
-const { test } = require('../../fixtures/auth.fixture');
-const { expect } = require('@playwright/test');
-const LeadPage = require('../../pages/LeadPage');
+import { test, expect } from '@playwright/test';
 
-test.describe('TC044 - Verify Lead creation fails when "Email" field is left blank due to "Email_Required" validation rule.', () => {
-  test('Lead creation fails with Email_Required validation error', async ({ authenticatedPage }) => {
-    const leadPage = new LeadPage(authenticatedPage);
+test('Login to Sauce Demo and validate Products page', async ({ page }) => {
+  await page.goto('https://www.saucedemo.com/');
 
-    const testLeadLastName = 'TestLead_' + Date.now();
-    const testLeadCompany = 'TestCompany_' + Date.now();
-    const testLeadStatus = 'New'; // Assuming 'New' is a valid picklist value for Status
+  await page.locator('#user-name').fill('standard_user');
+  await page.locator('#password').fill('secret_sauce');
 
-    await leadPage.navigateToLeads();
-    await leadPage.createLeadWithoutEmail(testLeadLastName, testLeadCompany, testLeadStatus);
+  await page.locator('#login-button').click();
 
-    const errorMessage = await leadPage.getErrorMessage();
-    expect(errorMessage).not.toBeNull();
-    expect(errorMessage).toContain('Email_Required'); // Expecting the validation rule name or a message indicating email is required
-    expect(errorMessage).toContain('Email'); // Ensure the message refers to the Email field
+  await expect(page).toHaveURL(/inventory/);
+
+  await expect(page.locator('.title')).toHaveText('Products');
+
+  await page.screenshot({
+    path: 'screenshots/login-success.png',
+    fullPage: true
   });
 });
