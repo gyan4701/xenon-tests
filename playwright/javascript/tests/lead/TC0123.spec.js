@@ -6,8 +6,8 @@ test('Create Salesforce Lead', async ({ page }) => {
   await page.goto('https://login.salesforce.com');
 
   // Login
-  await page.fill('#username', 'your_username');
-  await page.fill('#password', 'your_password');
+  await page.fill('#username', 'shambhavi.chandel948@agentforce.com');
+  await page.fill('#password', 'Salesforce@25');
   await page.click('#Login');
 
   // Wait for homepage
