@@ -1,0 +1,46 @@
+{
+  "MigrationPage": {
+    "waitUntil": {
+      "type": "css",
+      "value": "domcontentloaded",
+      "source": "migration_1779359261657_1p7nhkszt",
+      "firstSeen": "2026-05-21",
+      "lastUsed": "2026-05-21"
+    },
+    "name": {
+      "type": "css",
+      "value": "sid",
+      "source": "migration_1779359261657_1p7nhkszt",
+      "firstSeen": "2026-05-21",
+      "lastUsed": "2026-05-21"
+    },
+    "value": {
+      "type": "css",
+      "value": "YOUR_SESSION_ID_HERE",
+      "source": "migration_1779359261657_1p7nhkszt",
+      "firstSeen": "2026-05-21",
+      "lastUsed": "2026-05-21"
+    },
+    "domain": {
+      "type": "css",
+      "value": ".orgfarm-5694adb5bf-dev-ed.develop.lightning.force.com",
+      "source": "migration_1779359261657_1p7nhkszt",
+      "firstSeen": "2026-05-21",
+      "lastUsed": "2026-05-21"
+    },
+    "path": {
+      "type": "css",
+      "value": "/",
+      "source": "migration_1779359261657_1p7nhkszt",
+      "firstSeen": "2026-05-21",
+      "lastUsed": "2026-05-21"
+    },
+    "state": {
+      "type": "css",
+      "value": "visible",
+      "source": "migration_1779359261657_1p7nhkszt",
+      "firstSeen": "2026-05-21",
+      "lastUsed": "2026-05-21"
+    }
+  }
+}
