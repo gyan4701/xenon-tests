@@ -22,6 +22,14 @@
     "globalSearchInput": {
       "type": "css",
       "value": "input.search-container__input"
+    },
+    "appLauncherButton": {
+      "type": "css",
+      "value": "button.slds-icon-waffle"
+    },
+    "modalTitle": {
+      "type": "css",
+      "value": "h2.slds-modal__header_title"
     }
   }
 }
