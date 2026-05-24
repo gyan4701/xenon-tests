@@ -30,6 +30,10 @@
     "modalTitle": {
       "type": "css",
       "value": "h2.slds-modal__header_title"
+    },
+    "appLauncherSearchInput": {
+      "type": "css",
+      "value": "input.app-launcher__global-search-input"
     }
   }
 }
