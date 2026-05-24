@@ -1,13 +1,13 @@
-const { test } = require('../../fixtures/auth.fixture');
-const { expect } = require('@playwright/test');
+const { test, expect } = require('../../fixtures/auth.fixture');
 const AccountPage = require('../../pages/AccountPage');
 
 test.describe('TC003 - Verify Standard User (Non-Account Manager/Executive) can view TCV field but cannot edit it', () => {
-  const accountName = 'Gamma Services - TCV Test';
-  const expectedTCVValue = '$25,000.00';
-  const attemptNewTCVValue = '30000.00';
+  const ACCOUNT_NAME = 'Gamma Services - TCV Test';
+  const ACCOUNT_ID = 'ACC-TCV-003'; // For reference, not directly used in Playwright for search
+  const EXPECTED_TCV_AMOUNT = '$25,000.00';
+  const ATTEMPTED_TCV_AMOUNT = '30,000.00';
 
-  test('Standard User can view TCV field but cannot edit it', async ({ authenticatedPage }) => {
+  test('Verify TCV Amount field is viewable but not editable for Standard User', async ({ authenticatedPage }) => {
     const accountPage = new AccountPage(authenticatedPage);
 
     // 1. Login to Salesforce with 'Std_User' (Standard User) credentials. (Handled by fixture)
@@ -15,49 +15,52 @@ test.describe('TC003 - Verify Standard User (Non-Account Manager/Executive) can 
     // 2. Navigate to the 'Accounts' tab
     await accountPage.navigateToAccounts();
 
-    // 3. Search for the Account 'Gamma Services - TCV Test' (ID: 'ACC-TCV-003') using the global search bar.
+    // 3. Search for the Account 'Gamma Services - TCV Test'
     // 4. Click on the Account 'Gamma Services - TCV Test' to open its record page.
-    await accountPage.searchAndOpenAccount(accountName);
+    await accountPage.searchAndOpenAccount(ACCOUNT_NAME);
 
-    // 5. Verify that the 'TCV Amount' field (API Name: 'TCV_Amount__c') is visible on the Account detail page, displaying '$25,000.00'.
-    const tcvAmountOnDetailPage = await accountPage.getTCVAmountValueOnDetailPage();
-    expect(tcvAmountOnDetailPage).toBe(expectedTCVValue, 'TCV Amount field should be visible and display correct value.');
+    // 5. Verify that the 'TCV Amount' field (API Name: 'TCV_Amount__c') is visible on the Account detail page,
+    //    displaying '$25,000.00'.
+    const displayedTcvAmount = await accountPage.getTCVAmount();
+    expect(displayedTcvAmount).toBe(EXPECTED_TCV_AMOUNT, "TCV Amount should be visible and display the correct value on the detail page.");
 
     // 6. Click the 'Edit' button located in the highlight panel of the Account record page.
     await accountPage.clickEditButton();
 
     // 7. Locate the 'TCV Amount' field in the edit modal.
-    const tcvAmountEditField = await accountPage.getTCVAmountEditFieldLocator();
+    const tcvAmountInputField = accountPage.getTCVAmountInputFieldInEditModal();
+    await expect(tcvAmountInputField).toBeVisible("TCV Amount field should be visible in the edit modal.");
 
-    // 8. Attempt to enter or modify the value in the 'TCV Amount' field (e.g., try typing '30000.00').
-    // Expected Results:
-    // 2. The 'TCV Amount' field is displayed in a read-only state within the edit modal.
-    // 3. The user is unable to type or select a new value for the 'TCV Amount' field.
+    // 8. Attempt to enter or modify the value in the 'TCV Amount' field
+    // Expected Results 2 & 3: The 'TCV Amount' field is displayed in a read-only state
+    // and the user is unable to type or select a new value.
+    const isEditable = await tcvAmountInputField.isEditable();
+    expect(isEditable).toBeFalsy("TCV Amount field should NOT be editable in the edit modal.");
 
-    // Check if the input field is disabled or read-only
-    const isDisabled = await tcvAmountEditField.isDisabled();
-    const isReadOnly = await tcvAmountEditField.getAttribute('readonly') !== null;
-    const pointerEvents = await tcvAmountEditField.evaluate(el => window.getComputedStyle(el).getPropertyValue('pointer-events'));
-    const initialValueInEditModal = await tcvAmountEditField.inputValue();
+    // Further check specific attributes often used for read-only fields
+    const readonlyAttribute = await tcvAmountInputField.getAttribute('readonly');
+    const isDisabled = await tcvAmountInputField.isDisabled();
 
-    expect(isDisabled || isReadOnly || pointerEvents === 'none').toBeTruthy();
-    expect(isDisabled || isReadOnly || pointerEvents === 'none').toBe(true, 'TCV Amount field in edit modal should be read-only or disabled.');
+    expect(readonlyAttribute).not.toBeNull("TCV Amount field should have a 'readonly' attribute.");
+    // Sometimes fields are disabled instead of just readonly
+    expect(isDisabled).toBeFalsy("TCV Amount field should NOT be disabled. It should be readonly and visible.");
+    
+    // Attempting to fill value should not change its content if read-only
+    const initialValueInModal = await tcvAmountInputField.inputValue();
+    await accountPage.attemptToFillTCVAmount(ATTEMPTED_TCV_AMOUNT);
+    const valueAfterAttempt = await tcvAmountInputField.inputValue();
+    expect(valueAfterAttempt).toBe(initialValueInModal, "Attempting to type in TCV Amount field should not change its value.");
+    expect(valueAfterAttempt).not.toContain(ATTEMPTED_TCV_AMOUNT, "Attempted new value should not appear in TCV Amount field.");
 
-    // Attempt to fill and verify its value doesn't change
-    await tcvAmountEditField.focus();
-    await tcvAmountEditField.fill(attemptNewTCVValue).catch(() => {}); // Expect this to fail or not change value if read-only
-    await tcvAmountEditField.blur();
-    const valueAfterAttempt = await tcvAmountEditField.inputValue();
-    expect(valueAfterAttempt).toBe(initialValueInEditModal.replace(/\$|,/g, ''), 'TCV Amount field value should not be modifiable.'); // Remove $ and , for direct comparison if it's an input value
+    // Expected Result 4: The 'Save' button, if clicked after attempting to edit other fields,
+    // does not allow changes to the 'TCV Amount' field.
+    // Since we confirmed the TCV field is not editable, attempting to save other (hypothetically editable) fields
+    // would not implicitly save a change to TCV. We can confirm the 'Save' button is still clickable
+    // but its action wouldn't affect the TCV field.
+    const saveButton = authenticatedPage.locator(AccountPage.locators.saveButton);
+    await expect(saveButton).toBeEnabled("Save button should be enabled if other fields are editable.");
 
-    // Additional check: Try to force clear and fill (should still not work)
-    await tcvAmountEditField.evaluate(input => input.value = ''); // Clear via JS
-    await tcvAmountEditField.fill(attemptNewTCVValue, { force: true }).catch(() => {});
-    const valueAfterForceAttempt = await tcvAmountEditField.inputValue();
-    expect(valueAfterForceAttempt).toBe(initialValueInEditModal.replace(/\$|,/g, ''), 'TCV Amount field should resist forced modification.');
-
-    // The save button scenario is implicit - if the field is not editable, it cannot be saved with a new value.
-    // Since we confirmed it's not editable, the save button can't change it.
-    // We're not editing other fields, so we don't need to click save for this test case specifically.
+    // Click Cancel to exit the modal without saving any (hypothetical) changes to other fields.
+    await accountPage.clickCancelButtonInEditModal();
   });
 });
