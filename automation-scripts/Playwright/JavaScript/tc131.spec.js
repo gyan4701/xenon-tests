@@ -9,7 +9,7 @@ test.describe('Salesforce Account Creation', () => {
 
     // ✅ Directly open Lightning (authenticated via storageState.json)
     await page.goto(
-      'https://orgfarm-5694adb5bf-dev-ed.develop.lightning.force.com/lightning/page/home'
+      'https://orgfarm-33b82f167b-dev-ed.develop.lightning.force.com/lightning/page/home'
     );
 
     // ---------------- APP LAUNCHER ----------------
