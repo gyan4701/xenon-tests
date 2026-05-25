@@ -34,6 +34,10 @@
     "appLauncherSearchInput": {
       "type": "css",
       "value": "input.app-launcher__global-search-input"
+    },
+    "accountNameHeader": {
+      "type": "css",
+      "value": "h1 .slds-page-header__title"
     }
   }
 }
