@@ -1,19 +1,12 @@
-import { test, expect } from '@playwright/test';
+const { test } = require('@playwright/test');
 
-test('Login to Sauce Demo and validate Products page', async ({ page }) => {
-  await page.goto('https://www.saucedemo.com/');
+test('FORCE timeout on New button', async ({ page }) => {
 
-  await page.locator('#user-name').fill('standard_user');
-  await page.locator('#password').fill('secret_sauce');
+  await page.goto('https://orgfarm-33b82f167b-dev-ed.develop.lightning.force.com/lightning/page/home');
 
-  await page.locator('#login-button').click();
+  await page.locator('a[title="Leads"]').click();
 
-  await expect(page).toHaveURL(/inventory/);
+  await page.waitForSelector('button[name="New"]', { timeout: 1000 });
 
-  await expect(page.locator('.title')).toHaveText('Products');
-
-  await page.screenshot({
-    path: 'screenshots/login-success.png',
-    fullPage: true
-  });
+  await page.click('button[name="New"]');
 });
