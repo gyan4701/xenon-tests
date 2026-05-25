@@ -6,54 +6,43 @@ class AccountPage {
   }
 
   async navigateToAccounts() {
-    await this.page.waitForSelector(locators.appLauncherButton, { state: 'visible' });
     await this.page.click(locators.appLauncherButton);
-    await this.page.waitForSelector(locators.appLauncherSearchInput, { state: 'visible' });
     await this.page.fill(locators.appLauncherSearchInput, 'Accounts');
-    await this.page.click(locators.accountsAppTile);
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForSelector(locators.globalSearchInput, { state: 'visible' }); // Wait for page content to load
+    await this.page.click(locators.accountsAppLauncherLink);
+    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForSelector(locators.globalSearchInput, { state: 'visible' }); // Wait for page to fully load
   }
 
   async searchAndOpenAccount(accountName) {
-    await this.page.waitForSelector(locators.globalSearchInput, { state: 'visible' });
     await this.page.fill(locators.globalSearchInput, accountName);
-    await this.page.press(locators.globalSearchInput, 'Enter');
-    // Wait for search results to load and click on the specific record
-    await this.page.waitForSelector(locators.recordLinkByName(accountName), { state: 'visible' });
-    await this.page.click(locators.recordLinkByName(accountName));
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForSelector(locators.accountRecordNameHeader, { state: 'visible' });
-    await this.page.waitForLoadState('networkidle'); // Ensure all details are loaded
+    await this.page.keyboard.press('Enter');
+    await this.page.waitForLoadState('networkidle');
+    await this.page.click(locators.searchResultLink(accountName));
+    await this.page.waitForSelector(locators.accountNameHeader, { state: 'visible' });
+    await expect(this.page.locator(locators.accountNameHeader)).toHaveText(accountName);
   }
 
-  async getTCVAmountValueOnDetailPage() {
-    await this.page.waitForSelector(locators.tcvAmountViewField, { state: 'visible' });
-    return await this.page.textContent(locators.tcvAmountViewField);
+  async getTCVAmountFromDetailPage() {
+    const tcvLocator = this.page.locator(locators.tcvAmountDisplayValue);
+    await tcvLocator.waitFor({ state: 'visible' });
+    return await tcvLocator.textContent();
   }
 
   async clickEditButton() {
-    await this.page.waitForSelector(locators.editButton, { state: 'visible' });
     await this.page.click(locators.editButton);
-    await this.page.waitForSelector(locators.tcvAmountEditField, { state: 'visible' }); // Wait for edit modal to appear
+    // Wait for the edit modal to appear
+    await this.page.waitForSelector("h2.slds-modal__header_title:has-text('Edit Account')", { state: 'visible' });
   }
 
-  async getTCVAmountEditFieldLocator() {
-    await this.page.waitForSelector(locators.tcvAmountEditField, { state: 'visible' });
-    return this.page.locator(locators.tcvAmountEditField);
+  getTCVAmountEditFieldLocator() {
+    return this.page.locator(locators.tcvAmountEditInput);
   }
 
-  async attemptToTypeIntoTCVAmountField(newValue) {
-    const tcvField = this.page.locator(locators.tcvAmountEditField);
-    await tcvField.focus(); // Focus on the field
-    // Attempt to fill, this will either work or not if read-only
-    await tcvField.fill(newValue, { timeout: 1000, force: true }).catch(() => {}); // Catch error if element is not editable
-    return await tcvField.inputValue();
-  }
-
-  async clickSaveButton() {
-    await this.page.click(locators.saveButton);
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForSelector(locators.accountRecordNameHeader, { state: 'visible' }); // Wait for detail page to reload
+  async isTCVAmountFieldEditable() {
+    const tcvEditField = this.getTCVAmountEditFieldLocator();
+    // Check for readonly attribute or if the field is generally not editable
+    const isReadonly = await tcvEditField.getAttribute('readonly');
+    const isDisabled = await tcvEditField.isDisabled();
+    return !(isReadonly !== null || isDisabled);
   }
 }
