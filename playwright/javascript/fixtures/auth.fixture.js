@@ -19,8 +19,6 @@ const test = base.extend({
     } catch (e) {
       // No modal present, continue
     }
-
-    // Provide the authenticated page to the test
     await use(page);
 
     // Logout after test
