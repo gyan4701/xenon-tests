@@ -38,6 +38,10 @@
     "accountNameHeader": {
       "type": "css",
       "value": "h1 .slds-page-header__title"
+    },
+    "listViewTable": {
+      "type": "css",
+      "value": "table.slds-table"
     }
   }
 }
