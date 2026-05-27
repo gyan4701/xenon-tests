@@ -1,12 +1,40 @@
-const { test } = require('@playwright/test');
+const { test } = require('@playwright/test')
 
-test('FORCE timeout on New button', async ({ page }) => {
+test('FORCE wait timeout on delayed button', async ({ page }) => {
+  test.setTimeout(30000)
 
-  await page.goto('https://orgfarm-33b82f167b-dev-ed.develop.lightning.force.com/lightning/page/home');
+  await page.setContent(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Timeout Test Page</title>
+      </head>
+      <body>
+        <h1>Self-Heal Timeout Test</h1>
 
-  await page.locator('a[title="Leads"]').click();
+        <div id="container">
+          <p>The button will appear after 3 seconds.</p>
+        </div>
 
-  await page.waitForSelector('button[name="New"]', { timeout: 1000 });
+        <script>
+          setTimeout(() => {
+            const button = document.createElement('button')
+            button.id = 'submit-order'
+            button.textContent = 'Submit Order'
+            button.setAttribute('type', 'button')
+            document.getElementById('container').appendChild(button)
+          }, 3000)
+        </script>
+      </body>
+    </html>
+  `)
 
-  await page.click('button[name="New"]');
-});
+  // This will fail because the button appears after 3000ms,
+  // but the wait timeout is only 500ms.
+  await page.waitForSelector('#submit-order', {
+    state: 'visible',
+    timeout: 500,
+  })
+
+  await page.locator('#submit-order').click()
+})
