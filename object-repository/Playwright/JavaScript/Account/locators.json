@@ -1,0 +1,32 @@
+{
+  "AccountPage": {
+    "appLauncherButton": {
+      "type": "css",
+      "value": "button.slds-icon-waffle"
+    },
+    "appLauncherSearchInput": {
+      "type": "css",
+      "value": "input.app-launcher__global-search-input"
+    },
+    "globalSearchInput": {
+      "type": "css",
+      "value": "input.search-input"
+    },
+    "listViewTable": {
+      "type": "css",
+      "value": "table.slds-table"
+    },
+    "spinner": {
+      "type": "css",
+      "value": "div.slds-spinner"
+    },
+    "modalHeader": {
+      "type": "css",
+      "value": "div.modal-body .slds-modal__header h2.title"
+    },
+    "accountNameHeader": {
+      "type": "css",
+      "value": "h1 .slds-page-header__title"
+    }
+  }
+}
