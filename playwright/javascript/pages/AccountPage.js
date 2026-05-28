@@ -5,55 +5,70 @@ class AccountPage {
     this.page = page;
   }
 
-  async navigateToAccounts() {
+  /**
+   * Navigates to the Accounts home page via the App Launcher.
+   */
+  async navigateToAccountsHome() {
     await this.page.waitForSelector(locators.appLauncherButton, { state: 'visible' });
     await this.page.click(locators.appLauncherButton);
     await this.page.waitForSelector(locators.appLauncherSearchInput, { state: 'visible' });
     await this.page.fill(locators.appLauncherSearchInput, 'Accounts');
-    await this.page.click(locators.accountsAppTile);
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForSelector(locators.globalSearchInput, { state: 'visible' }); // Wait for page content to load
+    await this.page.waitForSelector(locators.appLauncherAccountLink, { state: 'visible' });
+    await this.page.click(locators.appLauncherAccountLink);
+    await this.page.waitForLoadState('networkidle');
+    await this.waitForSpinnerToDisappear();
   }
 
+  /**
+   * Searches for an account using the global search bar and opens its record page.
+   * @param {string} accountName - The name of the account to search for.
+   */
   async searchAndOpenAccount(accountName) {
     await this.page.waitForSelector(locators.globalSearchInput, { state: 'visible' });
     await this.page.fill(locators.globalSearchInput, accountName);
     await this.page.press(locators.globalSearchInput, 'Enter');
-    // Wait for search results to load and click on the specific record
-    await this.page.waitForSelector(locators.recordLinkByName(accountName), { state: 'visible' });
-    await this.page.click(locators.recordLinkByName(accountName));
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForSelector(locators.accountRecordNameHeader, { state: 'visible' });
-    await this.page.waitForLoadState('networkidle'); // Ensure all details are loaded
+    await this.page.waitForSelector(locators.listViewTable, { state: 'visible' });
+    // Click on the link for the specific account in the search results
+    await this.page.locator(`a[title="${accountName}"]`).first().click();
+    await this.page.waitForLoadState('networkidle');
+    await this.waitForSpinnerToDisappear();
+    await this.page.waitForSelector(locators.accountNameHeader, { state: 'visible', timeout: 10000 });
   }
 
-  async getTCVAmountValueOnDetailPage() {
-    await this.page.waitForSelector(locators.tcvAmountViewField, { state: 'visible' });
-    return await this.page.textContent(locators.tcvAmountViewField);
+  /**
+   * Retrieves the TCV Amount value displayed on the Account detail page.
+   * @returns {Promise<string>} The TCV Amount as a string.
+   */
+  async getTcvAmountOnDetailPage() {
+    const tcvField = this.page.locator(locators.tcvAmountDetailField);
+    await tcvField.waitFor({ state: 'visible' });
+    return await tcvField.textContent();
   }
 
+  /**
+   * Clicks the 'Edit' button on the Account record page highlight panel.
+   */
   async clickEditButton() {
     await this.page.waitForSelector(locators.editButton, { state: 'visible' });
     await this.page.click(locators.editButton);
-    await this.page.waitForSelector(locators.tcvAmountEditField, { state: 'visible' }); // Wait for edit modal to appear
+    await this.page.waitForSelector(locators.modalHeader, { state: 'visible' }); // Wait for the edit modal to appear
   }
 
-  async getTCVAmountEditFieldLocator() {
-    await this.page.waitForSelector(locators.tcvAmountEditField, { state: 'visible' });
+  /**
+   * Returns the Playwright Locator for the TCV Amount field within the edit modal.
+   * This locator can then be used to perform checks like isEditable().
+   * @returns {Locator} The Playwright Locator object for the TCV Amount input field.
+   */
+  getTcvAmountFieldInEditModal() {
     return this.page.locator(locators.tcvAmountEditField);
   }
 
-  async attemptToTypeIntoTCVAmountField(newValue) {
-    const tcvField = this.page.locator(locators.tcvAmountEditField);
-    await tcvField.focus(); // Focus on the field
-    // Attempt to fill, this will either work or not if read-only
-    await tcvField.fill(newValue, { timeout: 1000, force: true }).catch(() => {}); // Catch error if element is not editable
-    return await tcvField.inputValue();
-  }
-
-  async clickSaveButton() {
-    await this.page.click(locators.saveButton);
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForSelector(locators.accountRecordNameHeader, { state: 'visible' }); // Wait for detail page to reload
+  /**
+   * Waits for the Salesforce spinner to disappear.
+   */
+  async waitForSpinnerToDisappear() {
+    await this.page.locator(locators.spinner).waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
   }
 }
+
+module.exports = AccountPage;
