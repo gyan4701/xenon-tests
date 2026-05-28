@@ -1,4 +1,3 @@
-
 const { test, expect } = require('@playwright/test')
 
 test('FORCE locator failure and validate self-heal', async ({ page }) => {
