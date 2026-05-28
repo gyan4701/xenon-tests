@@ -2,7 +2,7 @@ const { test } = require('../../fixtures/auth.fixture');
 const { expect } = require('@playwright/test');
 const AccountPage = require('../../pages/AccountPage');
 
-test.describe('TC003 - Verify Standard User (Non-Account Manager/Executive) can view TCV field but cannot edit it', () => {
+test.describe('Account Creation', () => {
   const accountName = 'Gamma Services - TCV Test';
   const expectedTCVValue = '$25,000.00';
   const attemptNewTCVValue = '30000.00';
