@@ -2,14 +2,17 @@
 import { test, expect } from '@playwright/test';
 import LoginUtil from '../../../../server/utils/loginUtil';
 
-test('Create Salesforce Account (automated login with TOTP)', async ({ page }) => {
+test('Create Salesforce Lead (automated login with TOTP)', async ({ page }) => {
   test.setTimeout(180000);
 
   const username = process.env.SF_USERNAME;
   const password = process.env.SF_PASSWORD;
   const secret = process.env.SF_TOTP_SECRET;
 
-  const accountName = `Auto Account ${Date.now()}`;
+  const leadLastName = `Auto Lead ${Date.now()}`;
+  const leadCompany = `Auto Company ${Date.now()}`;
+  const leadEmail = `auto.lead.${Date.now()}@example.com`;
+  const leadPhone = '123-456-7890';
 
   const hasSessionCookie = async () => {
     const state = await page.context().storageState().catch(() => ({}));
@@ -52,8 +55,6 @@ test('Create Salesforce Account (automated login with TOTP)', async ({ page }) =
       return origin;
     }
 
-    // Fast path: resolve org domain from saved storageState cookies.
-    // This avoids the previous 60-second silent wait on about:blank.
     const state = await page.context().storageState().catch(() => ({}));
     const cookies = state.cookies || [];
 
@@ -113,7 +114,6 @@ test('Create Salesforce Account (automated login with TOTP)', async ({ page }) =
       return origin;
     }
 
-    // Last fallback: use current page URL, but do not wait unnecessarily.
     const currentUrl = page.url();
 
     if (currentUrl && currentUrl !== 'about:blank') {
@@ -173,6 +173,38 @@ test('Create Salesforce Account (automated login with TOTP)', async ({ page }) =
     return false;
   };
 
+  const selectPicklistIfVisible = async ({
+    buttonLocator,
+    optionText,
+    label,
+  }) => {
+    const picklist = buttonLocator.first();
+
+    if (!(await picklist.isVisible({ timeout: 3000 }).catch(() => false))) {
+      console.log(`ℹ️ Skipped ${label}; picklist not visible on this layout`);
+      return false;
+    }
+
+    await picklist.click();
+    console.log(`🔘 Opened ${label} picklist`);
+
+    const option = page
+      .locator(
+        [
+          `lightning-base-combobox-item span[title="${optionText}"]`,
+          `span[title="${optionText}"]`,
+          `[role="option"]:has-text("${optionText}")`,
+        ].join(', ')
+      )
+      .first();
+
+    await expect(option).toBeVisible({ timeout: 10000 });
+    await option.click();
+
+    console.log(`✅ Selected ${label}: ${optionText}`);
+    return true;
+  };
+
   // ── 1. Authenticate using existing saved state or TOTP login ───────────────
   const savedState = await page.context().storageState().catch(() => ({}));
   const hasSavedSession = (savedState.cookies || []).some((cookie) =>
@@ -198,8 +230,6 @@ test('Create Salesforce Account (automated login with TOTP)', async ({ page }) =
     console.log('▶ Using existing authenticated session from storageState.json');
   }
 
-  // If stored session was present but expired and current context lands on login screen,
-  // perform fresh TOTP login. This check is fast and does not wait 60 seconds.
   const onLoginPage =
     (await page.locator('#username').isVisible({ timeout: 3000 }).catch(() => false)) ||
     (await page.locator('input[name="username"]').isVisible({ timeout: 3000 }).catch(() => false));
@@ -218,30 +248,30 @@ test('Create Salesforce Account (automated login with TOTP)', async ({ page }) =
     await page.waitForTimeout(3000);
   }
 
-  console.log('✅ Logged in successfully, proceeding to create Account');
+  console.log('✅ Logged in successfully, proceeding to create Lead');
 
   const salesforceOrigin = await resolveSalesforceOrigin();
   console.log(`🌐 Salesforce origin resolved as: ${salesforceOrigin}`);
 
-  // ── 2. Navigate to Account list page ──────────────────────────────────────
-  console.log('📂 Opening Accounts list page...');
+  // ── 2. Navigate to Lead list page ─────────────────────────────────────────
+  console.log('📂 Opening Leads list page...');
 
-  await page.goto(`${salesforceOrigin}/lightning/o/Account/list?filterName=Recent`, {
+  await page.goto(`${salesforceOrigin}/lightning/o/Lead/list?filterName=Recent`, {
     waitUntil: 'domcontentloaded',
     timeout: 90000,
   });
 
   await ensureSalesforceSession();
 
-  await expect(page).toHaveURL(/\/lightning\/o\/Account\/list/i, {
+  await expect(page).toHaveURL(/\/lightning\/o\/Lead\/list/i, {
     timeout: 60000,
   });
 
   await page.waitForTimeout(2000);
-  console.log('✅ Accounts list page opened');
+  console.log('✅ Leads list page opened');
 
-  // ── 3. Open New Account form ──────────────────────────────────────────────
-  console.log('➕ Opening New Account form...');
+  // ── 3. Open New Lead form ─────────────────────────────────────────────────
+  console.log('➕ Opening New Lead form...');
 
   await clickFirstVisible(
     [
@@ -254,130 +284,101 @@ test('Create Salesforce Account (automated login with TOTP)', async ({ page }) =
     60000
   );
 
-  // Do not wait for a generic dialog. Salesforce may have hidden auraError dialogs.
-  // Wait for the actual Account Name field instead.
-  const accountNameInput = page.locator('input[name="Name"]');
+  // Do not wait for generic dialog because Salesforce may have hidden auraError dialogs.
+  // Wait for Lead required fields instead.
+  const lastNameInput = page.locator('input[name="lastName"], input[name="LastName"]').first();
 
-  await expect(accountNameInput).toBeVisible({
+  await expect(lastNameInput).toBeVisible({
     timeout: 60000,
   });
 
-  console.log('✅ New Account form is visible');
+  console.log('✅ New Lead form is visible');
 
-  // ── 4. Fill Account details ───────────────────────────────────────────────
-  console.log(`📝 Filling Account details: ${accountName}`);
+  // ── 4. Fill Lead details ──────────────────────────────────────────────────
+  console.log(`📝 Filling Lead details: ${leadLastName}`);
 
-  await accountNameInput.fill(accountName);
-  console.log('⌨️ Filled Account Name');
-
-  await fillIfVisible(page.locator('input[name="Phone"]'), '123-456-7890', 'Phone');
+  await fillIfVisible(page.locator('input[name="salutation"]').first(), 'Mr.', 'Salutation');
 
   await fillIfVisible(
-    page.locator('input[name="Website"]'),
-    'https://testaccount.example.com',
+    page.locator('input[name="firstName"], input[name="FirstName"]').first(),
+    'Auto',
+    'First Name'
+  );
+
+  await lastNameInput.fill(leadLastName);
+  console.log('⌨️ Filled Last Name');
+
+  const companyInput = page.locator('input[name="Company"]').first();
+  await expect(companyInput).toBeVisible({ timeout: 30000 });
+  await companyInput.fill(leadCompany);
+  console.log('⌨️ Filled Company');
+
+  await fillIfVisible(page.locator('input[name="Phone"]').first(), leadPhone, 'Phone');
+  await fillIfVisible(page.locator('input[name="Email"]').first(), leadEmail, 'Email');
+  await fillIfVisible(page.locator('input[name="Title"]').first(), 'Automation Lead', 'Title');
+
+  await fillIfVisible(
+    page.locator('input[name="Website"]').first(),
+    'https://testlead.example.com',
     'Website'
   );
 
-  await fillIfVisible(
-    page.locator('input[name="NumberOfEmployees"]'),
-    '500',
-    'Number of Employees'
-  );
+  // Optional Lead Status picklist
+  await selectPicklistIfVisible({
+    buttonLocator: page.locator(
+      'button[aria-label*="Lead Status"], button[aria-label*="Status"], [data-field="Status"] button'
+    ),
+    optionText: 'Open - Not Contacted',
+    label: 'Lead Status',
+  }).catch((error) => {
+    console.log(`ℹ️ Skipped Lead Status due to org-specific value/layout: ${error.message}`);
+  });
 
-  const descriptionInput = page.locator('textarea[name="Description"]');
+  // Optional Lead Source picklist
+  await selectPicklistIfVisible({
+    buttonLocator: page.locator(
+      'button[aria-label*="Lead Source"], [data-field="LeadSource"] button'
+    ),
+    optionText: 'Web',
+    label: 'Lead Source',
+  }).catch((error) => {
+    console.log(`ℹ️ Skipped Lead Source due to org-specific value/layout: ${error.message}`);
+  });
+
+  // Optional Rating picklist
+  await selectPicklistIfVisible({
+    buttonLocator: page.locator(
+      'button[aria-label*="Rating"], [data-field="Rating"] button'
+    ),
+    optionText: 'Warm',
+    label: 'Rating',
+  }).catch((error) => {
+    console.log(`ℹ️ Skipped Rating due to org-specific value/layout: ${error.message}`);
+  });
+
+  const descriptionInput = page.locator('textarea[name="Description"]').first();
+
   if (await descriptionInput.isVisible({ timeout: 3000 }).catch(() => false)) {
     await descriptionInput.fill('Created by Playwright automated test');
     console.log('⌨️ Filled Description');
-  }
-
-  // Optional Industry picklist
-  const industryPicklist = page
-    .locator(
-      'button[aria-label*="Industry"], button[aria-label="Industry"], [data-field="Industry"] button'
-    )
-    .first();
-
-  if (await industryPicklist.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await industryPicklist.click();
-    console.log('🔘 Opened Industry picklist');
-
-    const technologyOption = page
-      .locator(
-        'lightning-base-combobox-item span[title="Technology"], span[title="Technology"], [role="option"]:has-text("Technology")'
-      )
-      .first();
-
-    await expect(technologyOption).toBeVisible({ timeout: 10000 });
-    await technologyOption.click();
-
-    console.log('✅ Selected Industry: Technology');
   } else {
-    console.log('ℹ️ Skipped Industry; picklist not visible on this layout');
+    console.log('ℹ️ Skipped Description; field not visible on this layout');
   }
 
-  // Optional Type picklist
-  const typePicklist = page
-    .locator(
-      'button[aria-label*="Type"], button[aria-label="Type"], [data-field="Type"] button'
-    )
-    .first();
-
-  if (await typePicklist.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await typePicklist.click();
-    console.log('🔘 Opened Type picklist');
-
-    const prospectOption = page
-      .locator(
-        'lightning-base-combobox-item span[title="Prospect"], span[title="Prospect"], [role="option"]:has-text("Prospect")'
-      )
-      .first();
-
-    await expect(prospectOption).toBeVisible({ timeout: 10000 });
-    await prospectOption.click();
-
-    console.log('✅ Selected Type: Prospect');
-  } else {
-    console.log('ℹ️ Skipped Type; picklist not visible on this layout');
-  }
-
-  // Optional Billing Address fields
-  await fillIfVisible(
-    page.locator('textarea[name="BillingStreet"]'),
-    '123 Main Street',
-    'Billing Street'
-  );
-
-  await fillIfVisible(
-    page.locator('input[name="BillingCity"]'),
-    'Mumbai',
-    'Billing City'
-  );
-
-  await fillIfVisible(
-    page.locator('input[name="BillingState"]'),
-    'Maharashtra',
-    'Billing State'
-  );
-
-  await fillIfVisible(
-    page.locator('input[name="BillingPostalCode"]'),
-    '400001',
-    'Billing Postal Code'
-  );
-
-  await fillIfVisible(
-    page.locator('input[name="BillingCountry"]'),
-    'India',
-    'Billing Country'
-  );
+  // Optional Address fields
+  await fillIfVisible(page.locator('textarea[name="Street"]').first(), '123 Main Street', 'Street');
+  await fillIfVisible(page.locator('input[name="City"]').first(), 'Mumbai', 'City');
+  await fillIfVisible(page.locator('input[name="State"]').first(), 'Maharashtra', 'State');
+  await fillIfVisible(page.locator('input[name="PostalCode"]').first(), '400001', 'Postal Code');
+  await fillIfVisible(page.locator('input[name="Country"]').first(), 'India', 'Country');
 
   await page.screenshot({
-    path: `./reports/salesforce-account-form-filled-${Date.now()}.png`,
+    path: `./reports/salesforce-lead-form-filled-${Date.now()}.png`,
     fullPage: true,
   });
 
-  // ── 5. Save Account ───────────────────────────────────────────────────────
-  console.log('💾 Saving Account...');
+  // ── 5. Save Lead ──────────────────────────────────────────────────────────
+  console.log('💾 Saving Lead...');
 
   await clickFirstVisible(
     [
@@ -390,36 +391,36 @@ test('Create Salesforce Account (automated login with TOTP)', async ({ page }) =
 
   console.log('🔘 Clicked Save button');
 
-  // ── 6. Verify Account creation ────────────────────────────────────────────
-  console.log('🔎 Verifying Account creation...');
+  // ── 6. Verify Lead creation ───────────────────────────────────────────────
+  console.log('🔎 Verifying Lead creation...');
 
-  await expect(page).toHaveURL(/\/lightning\/r\/Account\//i, {
+  await expect(page).toHaveURL(/\/lightning\/r\/Lead\//i, {
     timeout: 60000,
   });
 
-  const createdAccountTitle = page
-    .locator('lightning-formatted-text[slot="primaryField"]')
-    .filter({ hasText: accountName })
+  const createdLeadTitle = page
+    .locator('lightning-formatted-name, lightning-formatted-text[slot="primaryField"]')
+    .filter({ hasText: leadLastName })
     .first();
 
-  const createdAccountAnyText = page
-    .getByText(accountName, { exact: true })
+  const createdLeadAnyText = page
+    .getByText(leadLastName, { exact: false })
     .first();
 
-  if (await createdAccountTitle.isVisible({ timeout: 10000 }).catch(() => false)) {
-    await expect(createdAccountTitle).toHaveText(accountName, {
+  if (await createdLeadTitle.isVisible({ timeout: 10000 }).catch(() => false)) {
+    await expect(createdLeadTitle).toContainText(leadLastName, {
       timeout: 60000,
     });
   } else {
-    await expect(createdAccountAnyText).toBeVisible({
+    await expect(createdLeadAnyText).toBeVisible({
       timeout: 60000,
     });
   }
 
   await page.screenshot({
-    path: `./reports/salesforce-account-created-${Date.now()}.png`,
+    path: `./reports/salesforce-lead-created-${Date.now()}.png`,
     fullPage: true,
   });
 
-  console.log(`✅ Account successfully created: ${accountName}`);
+  console.log(`✅ Lead successfully created: ${leadLastName} / ${leadCompany}`);
 });
