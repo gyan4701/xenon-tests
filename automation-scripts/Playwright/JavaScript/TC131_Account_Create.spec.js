@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import LoginUtil from '../../../server/utils/loginUtil';
+import LoginUtil from '../../../../server/utils/loginUtil';
 
 test('Create Salesforce Account (automated login with TOTP)', async ({ page }) => {
   test.setTimeout(180000);
