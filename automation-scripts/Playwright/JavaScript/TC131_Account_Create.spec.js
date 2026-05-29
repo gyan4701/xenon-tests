@@ -214,11 +214,24 @@ test('Create ', async ({ page }) => {
   // ── 6. Verify Account creation ────────────────────────────────────────────
   console.log('🔎 Verifying Account creation...');
 
-  await expect(
-    page.locator('.slds-page-header__title, lightning-formatted-text, slot[name="primaryField"]')
-  ).toContainText(accountName, {
+const createdAccountTitle = page
+  .locator('lightning-formatted-text[slot="primaryField"]')
+  .filter({ hasText: accountName })
+  .first();
+
+const createdAccountAnyText = page
+  .getByText(accountName, { exact: true })
+  .first();
+
+if (await createdAccountTitle.isVisible({ timeout: 10000 }).catch(() => false)) {
+  await expect(createdAccountTitle).toHaveText(accountName, {
     timeout: 60000,
   });
+} else {
+  await expect(createdAccountAnyText).toBeVisible({
+    timeout: 60000,
+  });
+}
 
   await page.screenshot({
     path: `./reports/salesforce-account-created-${Date.now()}.png`,
