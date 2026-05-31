@@ -1,7 +1,7 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
 
-test('SELF HEAL DEMO - Create Salesforce Lead with broken locator', async ({ page }) => {
+test('SELF HEAL DEMO - Create Salesforce Lead with broken New locator', async ({ page }) => {
   test.setTimeout(120000);
 
   const salesforceOrigin =
@@ -68,25 +68,27 @@ test('SELF HEAL DEMO - Create Salesforce Lead with broken locator', async ({ pag
     SELF-HEAL DEMO FAILURE:
 
     This locator is intentionally wrong:
-      button[aria-label="Create New Lead"]
+      div[aria-label="New"]
 
-    The label "Create New Lead" is intentionally close to the real action,
-    so self-heal can infer better candidates.
+    Salesforce has a real New button/link, but it is not a div with aria-label="New".
 
-    Expected healed candidates from selfHealService:
-      page.getByRole('button', { name: /^Create New Lead$/i })
-      page.getByRole('button', { name: /^New$/i })
-      page.getByText(...)
-      page.locator('[aria-label="Create New Lead"]')
-      page.locator('[title="Create New Lead"]')
+    This locator is intentionally designed for your selfHealService:
+    - extractSelectorLabel() extracts label: New
+    - inferRoleFromSelector() infers a clickable role
+    - buildLocatorCandidateExpressions() generates candidates like:
+        page.getByRole('button', { name: /^New$/i })
+        page.getByRole('link', { name: /^New$/i })
+        page.getByText('New', { exact: true })
+        page.locator('[title="New"]')
+        page.locator('[aria-label="New"]')
 
     IMPORTANT:
     Keep this as a single-line Playwright action.
     Your deterministic self-heal service replaces one failing line.
   */
-  await page.locator('button[aria-label="Create New Lead"]').click({ timeout: 10000 });
+  await page.locator('div[aria-label="New"]').click({ timeout: 10000 });
 
-  // After self-heal, the above line should be replaced with a working locator
+  // After self-heal, the above line should be replaced with a working locator,
   // and the New Lead form should become visible.
   const lastNameInput = page
     .locator('input[name="lastName"], input[name="LastName"]')
