@@ -38,6 +38,18 @@
     "stateVisible": {
       "type": "css",
       "value": "visible"
+    },
+    "accountsPageHeader": {
+      "type": "css",
+      "value": "h1 .slds-page-header__title"
+    },
+    "listViewOptionsContainer": {
+      "type": "css",
+      "value": "div.listViewPicker-list-item"
+    },
+    "searchResultsPane": {
+      "type": "css",
+      "value": "div.search-results-container"
     }
   }
 }
