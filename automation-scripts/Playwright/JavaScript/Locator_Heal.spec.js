@@ -17,6 +17,44 @@ test('SELF HEAL DEMO - Create Salesforce Lead with broken New locator', async ({
   console.log('🚀 Starting Salesforce Lead self-heal locator demo...');
   console.log(`🌐 Salesforce Origin: ${salesforceOrigin}`);
 
+  const clickFirstVisible = async (locators, timeout = 30000) => {
+    const deadline = Date.now() + timeout;
+
+    for (const locator of locators) {
+      const remaining = Math.max(deadline - Date.now(), 1000);
+
+      try {
+        const candidate = locator.first();
+
+        await expect(candidate).toBeVisible({
+          timeout: Math.min(remaining, 8000),
+        });
+
+        await candidate.scrollIntoViewIfNeeded().catch(() => {});
+        await candidate.click({ timeout: Math.min(remaining, 10000) });
+
+        return true;
+      } catch (error) {
+        // Try next locator.
+      }
+    }
+
+    throw new Error(`None of the provided locators became visible within ${timeout}ms.`);
+  };
+
+  const fillIfVisible = async (locator, value, label) => {
+    const candidate = locator.first();
+
+    if (await candidate.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await candidate.fill(value);
+      console.log(`⌨️ Filled ${label}`);
+      return true;
+    }
+
+    console.log(`ℹ️ Skipped ${label}; field not visible on this layout`);
+    return false;
+  };
+
   // ── 1. Open Leads page using existing storageState ────────────────────────
   await page.goto(`${salesforceOrigin}/lightning/o/Lead/list?filterName=Recent`, {
     waitUntil: 'domcontentloaded',
@@ -70,26 +108,13 @@ test('SELF HEAL DEMO - Create Salesforce Lead with broken New locator', async ({
     This locator is intentionally wrong:
       div[aria-label="New"]
 
-    Salesforce has a real New button/link, but it is not a div with aria-label="New".
+    The label is still "New", so your selfHealService can generate useful
+    candidates such as getByRole('button', { name: /^New$/i }) or [title="New"].
 
-    This locator is intentionally designed for your selfHealService:
-    - extractSelectorLabel() extracts label: New
-    - inferRoleFromSelector() infers a clickable role
-    - buildLocatorCandidateExpressions() generates candidates like:
-        page.getByRole('button', { name: /^New$/i })
-        page.getByRole('link', { name: /^New$/i })
-        page.getByText('New', { exact: true })
-        page.locator('[title="New"]')
-        page.locator('[aria-label="New"]')
-
-    IMPORTANT:
     Keep this as a single-line Playwright action.
-    Your deterministic self-heal service replaces one failing line.
   */
   await page.locator('div[aria-label="New"]').click({ timeout: 10000 });
 
-  // After self-heal, the above line should be replaced with a working locator,
-  // and the New Lead form should become visible.
   const lastNameInput = page
     .locator('input[name="lastName"], input[name="LastName"]')
     .first();
@@ -103,14 +128,11 @@ test('SELF HEAL DEMO - Create Salesforce Lead with broken New locator', async ({
   // ── 3. Fill Lead details ──────────────────────────────────────────────────
   console.log(`📝 Filling Lead details: ${leadLastName}`);
 
-  const firstNameInput = page
-    .locator('input[name="firstName"], input[name="FirstName"]')
-    .first();
-
-  if (await firstNameInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await firstNameInput.fill('SelfHeal');
-    console.log('⌨️ Filled First Name');
-  }
+  await fillIfVisible(
+    page.locator('input[name="firstName"], input[name="FirstName"]'),
+    'SelfHeal',
+    'First Name'
+  );
 
   await lastNameInput.fill(leadLastName);
   console.log('⌨️ Filled Last Name');
@@ -124,33 +146,20 @@ test('SELF HEAL DEMO - Create Salesforce Lead with broken New locator', async ({
   await companyInput.fill(leadCompany);
   console.log('⌨️ Filled Company');
 
-  const emailInput = page.locator('input[name="Email"]').first();
+  await fillIfVisible(page.locator('input[name="Email"]'), leadEmail, 'Email');
+  await fillIfVisible(page.locator('input[name="Phone"]'), leadPhone, 'Phone');
 
-  if (await emailInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await emailInput.fill(leadEmail);
-    console.log('⌨️ Filled Email');
-  }
+  await fillIfVisible(
+    page.locator('input[name="Title"]'),
+    'Self Heal Demo Lead',
+    'Title'
+  );
 
-  const phoneInput = page.locator('input[name="Phone"]').first();
-
-  if (await phoneInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await phoneInput.fill(leadPhone);
-    console.log('⌨️ Filled Phone');
-  }
-
-  const titleInput = page.locator('input[name="Title"]').first();
-
-  if (await titleInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await titleInput.fill('Self Heal Demo Lead');
-    console.log('⌨️ Filled Title');
-  }
-
-  const descriptionInput = page.locator('textarea[name="Description"]').first();
-
-  if (await descriptionInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await descriptionInput.fill('Created by MCP Executor self-heal locator demo');
-    console.log('⌨️ Filled Description');
-  }
+  await fillIfVisible(
+    page.locator('textarea[name="Description"]'),
+    'Created by MCP Executor self-heal locator demo',
+    'Description'
+  );
 
   await page.screenshot({
     path: `./reports/self-heal-lead-form-filled-${Date.now()}.png`,
@@ -160,15 +169,21 @@ test('SELF HEAL DEMO - Create Salesforce Lead with broken New locator', async ({
   // ── 4. Save Lead ──────────────────────────────────────────────────────────
   console.log('💾 Saving Lead...');
 
-  const saveButton = page
-    .locator('button[name="SaveEdit"], button:has-text("Save")')
-    .first();
-
-  await expect(saveButton).toBeVisible({
-    timeout: 30000,
-  });
-
-  await saveButton.click();
+  /*
+    Salesforce can render multiple Save buttons, some hidden.
+    Do not use .first() directly here.
+    This is the same safer pattern from the earlier working Lead script.
+  */
+  await clickFirstVisible(
+    [
+      page.locator('button[name="SaveEdit"]'),
+      page.getByRole('button', { name: /^Save$/ }),
+      page.locator('button:has-text("Save")'),
+      page.locator('.slds-button:has-text("Save")'),
+      page.locator('button.test-saveButton'),
+    ],
+    30000
+  );
 
   console.log('🔘 Clicked Save button');
 
