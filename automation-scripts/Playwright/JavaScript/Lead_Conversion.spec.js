@@ -15,34 +15,68 @@ test('Convert Salesforce Lead to Account Contact Opportunity', async ({ page }) 
 
   const convertedOpportunityName = `Converted Opportunity ${Date.now()}`;
 
+  const loginUtil = new LoginUtil(page);
+
   const hasSessionCookie = async () => {
     const state = await page.context().storageState().catch(() => ({}));
 
-    return (state.cookies || []).some((cookie) =>
-      /sid|session|auth/i.test(cookie.name)
+    return (state.cookies || []).some((cookie) => {
+      const cookieNameLooksLikeSession = /sid|session|auth/i.test(cookie.name);
+      const cookieDomainLooksLikeSalesforce = /salesforce\.com|force\.com/i.test(
+        cookie.domain || ''
+      );
+
+      return cookieNameLooksLikeSession && cookieDomainLooksLikeSalesforce;
+    });
+  };
+
+  const isLoginScreenVisible = async () => {
+    return (
+      (await page
+        .locator('#username, input[name="username"]')
+        .first()
+        .isVisible({ timeout: 2500 })
+        .catch(() => false)) ||
+      /login|challenge|verification|identity/i.test(page.url())
     );
   };
 
-  const ensureSalesforceSession = async () => {
+  const isSalesforceContentDoorStuck = () => {
     const currentUrl = page.url();
 
-    if (/login|challenge|verification|identity/i.test(currentUrl)) {
+    return (
+      /file\.force\.com\/secur\/contentDoor/i.test(currentUrl) ||
+      /my\.salesforce\.com\/\?ec=302/i.test(currentUrl)
+    );
+  };
+
+  const performFreshLogin = async (reason) => {
+    console.log(`🔐 Performing fresh Salesforce TOTP login. Reason: ${reason}`);
+
+    if (!username || !password || !secret) {
       throw new Error(
-        `Salesforce session is not authenticated. Current URL: ${currentUrl}`
+        [
+          'Salesforce session is invalid and credentials are missing.',
+          'Set these environment variables:',
+          'SF_USERNAME',
+          'SF_PASSWORD',
+          'SF_TOTP_SECRET',
+        ].join('\n')
       );
     }
 
-    const usernameInputVisible = await page
-      .locator('#username, input[name="username"]')
-      .first()
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
+    await loginUtil.loginWithTotp({ username, password, secret });
 
-    if (usernameInputVisible) {
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    await page.waitForTimeout(3000);
+
+    if (await isLoginScreenVisible()) {
       throw new Error(
-        'Salesforce redirected to login page. Stored session is expired or invalid.'
+        `Fresh Salesforce login did not complete. Current URL: ${page.url()}`
       );
     }
+
+    console.log('✅ Fresh Salesforce TOTP login completed');
   };
 
   const resolveSalesforceOrigin = async () => {
@@ -100,21 +134,6 @@ test('Convert Salesforce Lead to Account Contact Opportunity', async ({ page }) 
       return origin;
     }
 
-    const salesforceCookie = cookies.find((cookie) =>
-      /salesforce\.com/i.test(cookie.domain)
-    );
-
-    if (salesforceCookie?.domain) {
-      const domain = salesforceCookie.domain.replace(/^\./, '');
-
-      const origin = domain.includes('my.salesforce.com')
-        ? `https://${domain.replace('.my.salesforce.com', '.lightning.force.com')}`
-        : `https://${domain}`;
-
-      console.log(`✅ Using Salesforce origin from salesforce.com cookie: ${origin}`);
-      return origin;
-    }
-
     const currentUrl = page.url();
 
     if (currentUrl && currentUrl !== 'about:blank') {
@@ -132,7 +151,7 @@ test('Convert Salesforce Lead to Account Contact Opportunity', async ({ page }) 
 
     throw new Error(
       [
-        'Could not resolve Salesforce org origin quickly.',
+        'Could not resolve Salesforce org origin.',
         '',
         'Recommended fix: add SF_INSTANCE_URL to your .env file:',
         'SF_INSTANCE_URL=https://enterprise-platform-3896.lightning.force.com',
@@ -140,6 +159,82 @@ test('Convert Salesforce Lead to Account Contact Opportunity', async ({ page }) 
         `Current URL: ${currentUrl}`,
       ].join('\n')
     );
+  };
+
+  const ensureSalesforceSession = async () => {
+    if (await isLoginScreenVisible()) {
+      throw new Error(
+        `Salesforce session is not authenticated. Current URL: ${page.url()}`
+      );
+    }
+
+    if (isSalesforceContentDoorStuck()) {
+      throw new Error(
+        `Salesforce session is stuck in contentDoor redirect. Current URL: ${page.url()}`
+      );
+    }
+  };
+
+  const openSalesforcePathWithSessionRepair = async ({
+    salesforceOrigin,
+    path,
+    expectedUrlPattern,
+    label,
+  }) => {
+    const targetUrl = `${salesforceOrigin}${path}`;
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      console.log(`📂 Opening ${label}. Attempt ${attempt}: ${targetUrl}`);
+
+      await page.goto(targetUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 90000,
+      });
+
+      await page.waitForTimeout(5000);
+
+      const currentUrl = page.url();
+      console.log(`🌐 URL after navigation attempt ${attempt}: ${currentUrl}`);
+
+      const reachedExpectedUrl = expectedUrlPattern.test(currentUrl);
+
+      if (reachedExpectedUrl) {
+        await ensureSalesforceSession();
+        console.log(`✅ ${label} opened`);
+        return;
+      }
+
+      const loginVisible = await isLoginScreenVisible();
+      const contentDoorStuck = isSalesforceContentDoorStuck();
+
+      if (
+        loginVisible ||
+        contentDoorStuck ||
+        /my\.salesforce\.com\/?$/i.test(currentUrl)
+      ) {
+        if (attempt === 1) {
+          await performFreshLogin(
+            loginVisible
+              ? 'Salesforce redirected to login screen'
+              : 'Stored session is stale and Salesforce is stuck in redirect/contentDoor'
+          );
+
+          continue;
+        }
+      }
+
+      if (attempt === 2) {
+        throw new Error(
+          [
+            `Could not open ${label}.`,
+            `Expected URL pattern: ${expectedUrlPattern}`,
+            `Current URL: ${page.url()}`,
+            '',
+            'The stored Salesforce session may be expired. Refresh storageState or check SF_INSTANCE_URL.',
+          ].join('\n')
+        );
+      }
+    }
   };
 
   const clickFirstVisible = async (locators, timeout = 30000) => {
@@ -250,7 +345,6 @@ test('Convert Salesforce Lead to Account Contact Opportunity', async ({ page }) 
     for (const locator of candidateButtons) {
       const count = await locator.count().catch(() => 0);
 
-      // Prefer last visible button because modal footer action is usually near the end.
       for (let i = count - 1; i >= 0; i -= 1) {
         const button = locator.nth(i);
 
@@ -336,69 +430,28 @@ test('Convert Salesforce Lead to Account Contact Opportunity', async ({ page }) 
   };
 
   // ── 1. Authenticate using existing saved state or TOTP login ───────────────
-  const savedState = await page.context().storageState().catch(() => ({}));
-  const hasSavedSession = (savedState.cookies || []).some((cookie) =>
-    /sid|session|auth/i.test(cookie.name)
-  );
+  const sessionCookieExists = await hasSessionCookie();
 
-  if (!hasSavedSession && (!username || !password || !secret)) {
-    test.skip(
-      true,
-      'SF credentials missing: set SF_USERNAME, SF_PASSWORD, SF_TOTP_SECRET, or create storageState.json using saveAuthState.spec.js'
-    );
-  }
-
-  const loginUtil = new LoginUtil(page);
-
-  if (!(await hasSessionCookie())) {
-    console.log('🔐 No active stored Salesforce session found. Logging in with TOTP...');
-    await loginUtil.loginWithTotp({ username, password, secret });
-
-    await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await page.waitForTimeout(3000);
+  if (!sessionCookieExists) {
+    console.log('🔐 No Salesforce session cookie found.');
+    await performFreshLogin('No saved Salesforce session cookie found');
   } else {
-    console.log('▶ Using existing authenticated session from storageState.json');
+    console.log('▶ Salesforce session cookie found in storageState.json');
+    console.log('ℹ️ Session will be validated by opening the Lead page.');
   }
-
-  const onLoginPage =
-    (await page.locator('#username').isVisible({ timeout: 3000 }).catch(() => false)) ||
-    (await page.locator('input[name="username"]').isVisible({ timeout: 3000 }).catch(() => false));
-
-  if (onLoginPage) {
-    console.log('⚠️ Stored session is invalid. Performing fresh TOTP login...');
-
-    if (!username || !password || !secret) {
-      throw new Error(
-        'Session appears invalid and SF credentials are not set. Set SF_USERNAME, SF_PASSWORD, SF_TOTP_SECRET or refresh storageState.json.'
-      );
-    }
-
-    await loginUtil.loginWithTotp({ username, password, secret });
-    await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await page.waitForTimeout(3000);
-  }
-
-  console.log('✅ Logged in successfully, proceeding to convert Lead');
 
   const salesforceOrigin = await resolveSalesforceOrigin();
   console.log(`🌐 Salesforce origin resolved as: ${salesforceOrigin}`);
 
-  // ── 2. Navigate to Lead list page ─────────────────────────────────────────
-  console.log('📂 Opening Leads list page...');
-
-  await page.goto(`${salesforceOrigin}/lightning/o/Lead/list?filterName=Recent`, {
-    waitUntil: 'domcontentloaded',
-    timeout: 90000,
-  });
-
-  await ensureSalesforceSession();
-
-  await expect(page).toHaveURL(/\/lightning\/o\/Lead\/list/i, {
-    timeout: 60000,
+  // ── 2. Navigate to Lead list page with session repair ─────────────────────
+  await openSalesforcePathWithSessionRepair({
+    salesforceOrigin,
+    path: '/lightning/o/Lead/list?filterName=Recent',
+    expectedUrlPattern: /\/lightning\/o\/Lead\/list/i,
+    label: 'Leads list page',
   });
 
   await page.waitForTimeout(3000);
-  console.log('✅ Leads list page opened');
 
   // ── 3. Open Lead record ───────────────────────────────────────────────────
   console.log('🔎 Opening Lead record...');
