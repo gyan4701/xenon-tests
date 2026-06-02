@@ -2,7 +2,7 @@
 const { test, expect } = require('@playwright/test');
 
 test('SELF HEAL DEMO - Create Salesforce Lead with broken New locator', async ({ page }) => {
-  test.setTimeout(120000);
+  test.setTimeout(30000);
 
   const salesforceOrigin =
     process.env.SF_INSTANCE_URL ||
