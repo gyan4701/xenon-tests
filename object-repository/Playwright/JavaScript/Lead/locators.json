@@ -7,6 +7,13 @@
     "genericFieldErrorMessage": {
       "type": "css",
       "value": ".slds-form-element__help, .forceFormMessage.forceRecordEditError, .field-error, .slds-notify--error .toastMessage"
+    },
+    "state": {
+      "type": "css",
+      "value": "visible",
+      "source": "TC055",
+      "firstSeen": "2026-06-02",
+      "lastUsed": "2026-06-02"
     }
   }
 }
