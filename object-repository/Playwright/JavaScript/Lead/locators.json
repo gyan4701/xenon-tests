@@ -1,3 +1,12 @@
 {
-  "LeadPage": {}
+  "LeadPage": {
+    "recordPageTitle": {
+      "type": "css",
+      "value": "div.flexipageHeader.oneActionsFlippable.forceActionsContainer.noButton.showTitle .slds-page-header__title span.s-truncate.uiOutputText"
+    },
+    "genericFieldErrorMessage": {
+      "type": "css",
+      "value": ".slds-form-element__help, .forceFormMessage.forceRecordEditError, .field-error, .slds-notify--error .toastMessage"
+    }
+  }
 }
