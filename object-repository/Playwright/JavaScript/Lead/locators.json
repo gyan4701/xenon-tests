@@ -15,6 +15,10 @@
     "editFormHeader": {
       "type": "css",
       "value": "section.slds-modal.uiPanel.forceModal.auraPanel.forceModalHost.uiModal--medium h2.slds-text-heading--medium"
+    },
+    "successToastMessage": {
+      "type": "css",
+      "value": "div.slds-notify--success .toastMessage"
     }
   }
 }
