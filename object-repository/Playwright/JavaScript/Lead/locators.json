@@ -7,6 +7,14 @@
     "genericFieldErrorMessage": {
       "type": "css",
       "value": ".slds-form-element__help, .forceFormMessage.forceRecordEditError, .field-error, .slds-notify--error .toastMessage"
+    },
+    "appLauncherIcon": {
+      "type": "css",
+      "value": "div.appLauncher.slds-context-bar__icon-action button"
+    },
+    "editFormHeader": {
+      "type": "css",
+      "value": "section.slds-modal.uiPanel.forceModal.auraPanel.forceModalHost.uiModal--medium h2.slds-text-heading--medium"
     }
   }
 }
