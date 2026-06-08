@@ -58,7 +58,7 @@ test('SELF HEAL DEMO - Create Salesforce Lead with broken New locator', async ({
   // ── 1. Open Leads page using existing storageState ────────────────────────
   await page.goto(`${salesforceOrigin}/lightning/o/Lead/list?filterName=Recent`, {
     waitUntil: 'domcontentloaded',
-    timeout: 90000,
+    timeout: 60000,
   });
 
   await page.waitForTimeout(5000);
