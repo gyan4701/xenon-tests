@@ -5,43 +5,92 @@ class LeadPage {
     this.page = page;
   }
 
-  async navigateToLeads() {
+  /**
+   * Navigates to the Accounts tab via the App Launcher.
+   */
+  async navigateToAccountsTab() {
     await this.page.click(locators.appLauncherIcon);
-    await this.page.waitForSelector(locators.leadsMenuItem, { state: 'visible' });
-    await this.page.click(locators.leadsMenuItem);
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForSelector(locators.newButton, { state: 'visible', timeout: 30000 });
+    await this.page.locator('input.slds-input[placeholder="Search apps and items..."]').fill('Accounts');
+    await this.page.click(locators.accountsTabLink);
+    await this.page.waitForLoadState('networkidle');
+    // Verify navigation by checking the header title for 'Accounts'
+    await this.page.waitForSelector("h1 span.slds-page-header__title:has-text('Accounts')");
   }
 
-  async createLeadWithoutEmail(lastName, company, status) {
-    await this.page.click(locators.newButton);
-    await this.page.waitForSelector(locators.lastNameInput, { state: 'visible', timeout: 15000 });
-    await this.page.fill(locators.lastNameInput, lastName);
-    await this.page.fill(locators.companyInput, company);
+  /**
+   * Searches for an account by name in the list view and opens its detail page.
+   * @param {string} accountName The name of the account to search for.
+   */
+  async searchAndOpenAccount(accountName) {
+    await this.page.waitForSelector(locators.listViewSearchInput, { state: 'visible' });
+    await this.page.fill(locators.listViewSearchInput, accountName);
+    await this.page.keyboard.press('Enter');
+    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForSelector(locators.accountRecordLink(accountName), { state: 'visible' });
+    await this.page.click(locators.accountRecordLink(accountName));
+    await this.page.waitForLoadState('networkidle');
+    // Verify the record page title
+    await this.page.waitForSelector(locators.recordPageTitle);
+    await expect(this.page.locator(locators.recordPageTitle)).toHaveText(accountName);
+  }
 
-    await this.page.click(locators.statusComboboxButton);
-    await this.page.waitForSelector(locators.statusComboboxOption(status), { state: 'visible' });
-    await this.page.click(locators.statusComboboxOption(status));
+  /**
+   * Edits the account owner and enters a reassignment reason.
+   * @param {string} newOwnerName The name of the new account owner.
+   * @param {string} reassignmentReason The reason for the reassignment.
+   */
+  async editAccountOwner(newOwnerName, reassignmentReason) {
+    await this.page.waitForSelector(locators.editButton, { state: 'visible' });
+    await this.page.click(locators.editButton);
+    await this.page.waitForSelector(locators.editFormHeader, { state: 'visible' });
 
-    // Intentionally leave Email field blank
+    // Click the lookup icon next to the 'Account Owner' field
+    await this.page.waitForSelector(locators.accountOwnerLookupButton, { state: 'visible' });
+    await this.page.click(locators.accountOwnerLookupButton);
 
+    // Search for the new owner in the lookup modal
+    await this.page.waitForSelector(locators.lookupModalSearchInput, { state: 'visible' });
+    await this.page.fill(locators.lookupModalSearchInput, newOwnerName);
+    await this.page.waitForTimeout(1000); // Give time for search results to load
+
+    // Select the new owner from the results (using XPath for robustness)
+    await this.page.waitForXPath(locators.lookupModalResult(newOwnerName), { state: 'visible' });
+    await this.page.locator(locators.lookupModalResult(newOwnerName)).click();
+
+    // Enter the reassignment reason
+    await this.page.waitForSelector(locators.reassignmentReasonTextArea, { state: 'visible' });
+    await this.page.fill(locators.reassignmentReasonTextArea, reassignmentReason);
+
+    // Click the Save button
     await this.page.click(locators.saveButton);
+    await this.page.waitForLoadState('networkidle');
   }
 
-  async getErrorMessage() {
-    // Prioritize toast message first for global validation rules
-    if (await this.page.locator(locators.toastMessage).isVisible({ timeout: 10000 })) {
-      return await this.page.textContent(locators.toastMessage);
-    }
-    // Fallback to field-level error message if toast not found or not specific enough
-    if (await this.page.locator(locators.emailFieldErrorMessage).isVisible({ timeout: 5000 })) {
-        return await this.page.textContent(locators.emailFieldErrorMessage);
-    }
-    // Fallback to general form error banner
-    if (await this.page.locator(locators.formErrorBanner).isVisible({ timeout: 5000 })) {
-        return await this.page.textContent(locators.formErrorBanner);
-    }
-    return null;
+  /**
+   * Retrieves the current Account Owner name from the detail page.
+   * @returns {Promise<string>} The text content of the Account Owner field.
+   */
+  async getAccountOwner() {
+    await this.page.waitForSelector(locators.accountOwnerDetailField, { state: 'visible' });
+    return await this.page.textContent(locators.accountOwnerDetailField);
+  }
+
+  /**
+   * Retrieves the Reassignment Reason from the detail page.
+   * @returns {Promise<string>} The text content of the Reassignment Reason field.
+   */
+  async getReassignmentReason() {
+    await this.page.waitForSelector(locators.reassignmentReasonDetailField, { state: 'visible' });
+    return await this.page.textContent(locators.reassignmentReasonDetailField);
+  }
+
+  /**
+   * Retrieves the success toast message after an operation.
+   * @returns {Promise<string>} The text content of the success message.
+   */
+  async getSuccessMessage() {
+    await this.page.waitForSelector(locators.successToastMessage, { state: 'visible' });
+    return await this.page.textContent(locators.successToastMessage);
   }
 }
 
