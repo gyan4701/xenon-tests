@@ -1,0 +1,64 @@
+{
+  "LeadPage": {
+    "elem_mi91uc": {
+      "type": "xpath",
+      "value": "//lightning-base-combobox-item[@title="
+    },
+    "elem_b4b793": {
+      "type": "xpath",
+      "value": "//lightning-output-field[@field-name="
+    },
+    "elem_1deqsf": {
+      "type": "css",
+      "value": "input[name="
+    },
+    "elem_je63ih": {
+      "type": "css",
+      "value": "button[name="
+    },
+    "elem_n6th5i": {
+      "type": "css",
+      "value": "lightning-spinner"
+    },
+    "elem_snmir9": {
+      "type": "css",
+      "value": ".setupBurger .uiImage"
+    },
+    "elem_ice14j": {
+      "type": "css",
+      "value": "a.profile-link.logout"
+    },
+    "elem_fefljn": {
+      "type": "css",
+      "value": "button.slds-button_icon-waffle"
+    },
+    "elem_t7pukb": {
+      "type": "css",
+      "value": "input.appLauncherSearchInput"
+    },
+    "elem_yilrp7": {
+      "type": "css",
+      "value": "input[placeholder="
+    },
+    "elem_xmle98": {
+      "type": "css",
+      "value": ".forceRecordLayout .entityName"
+    },
+    "elem_2ij2sr": {
+      "type": "css",
+      "value": ".slds-modal__container"
+    },
+    "elem_2oitzz": {
+      "type": "css",
+      "value": "lightning-lookup[field-name="
+    },
+    "elem_ct3nbk": {
+      "type": "css",
+      "value": ".slds-lookup__menu"
+    },
+    "elem_r8l8i6": {
+      "type": "css",
+      "value": "div.forceToastMessage"
+    }
+  }
+}
