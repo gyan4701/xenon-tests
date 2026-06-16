@@ -19,6 +19,13 @@
     "successToastMessage": {
       "type": "css",
       "value": "div.slds-notify--success .toastMessage"
+    },
+    "state": {
+      "type": "css",
+      "value": "visible",
+      "source": "TC056",
+      "firstSeen": "2026-06-16",
+      "lastUsed": "2026-06-16"
     }
   }
 }

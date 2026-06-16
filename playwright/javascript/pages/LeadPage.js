@@ -5,44 +5,101 @@ class LeadPage {
     this.page = page;
   }
 
-  async navigateToLeads() {
+  /**
+   * Navigates to a specific Salesforce app item (e.g., 'Accounts' or 'Leads').
+   * Given the conflicting instructions, this will navigate to 'Accounts' as per the test case intent.
+   * @param {string} itemName The name of the App item (e.g., 'Accounts', 'Leads').
+   */
+  async navigateToAppItem(itemName) {
+    await this.page.waitForSelector(locators.appLauncherIcon, { state: 'visible' });
     await this.page.click(locators.appLauncherIcon);
-    await this.page.waitForSelector(locators.leadsMenuItem, { state: 'visible' });
-    await this.page.click(locators.leadsMenuItem);
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForSelector(locators.newButton, { state: 'visible', timeout: 30000 });
+    await this.page.waitForSelector('.app-launcher-menu', { state: 'visible' });
+    await this.page.locator(`input[placeholder='Search apps and items...']`).fill(itemName);
+    await this.page.locator(locators.appMenuItem(itemName)).click();
+    await this.page.waitForLoadState('networkidle');
+    // Verify navigation by checking the current page's title or URL segment
+    await this.page.waitForURL(`**/*${itemName}*`);
   }
 
-  async createLeadWithoutEmail(lastName, company, status) {
-    await this.page.click(locators.newButton);
-    await this.page.waitForSelector(locators.lastNameInput, { state: 'visible', timeout: 15000 });
-    await this.page.fill(locators.lastNameInput, lastName);
-    await this.page.fill(locators.companyInput, company);
+  /**
+   * Searches for a record and opens its detail page.
+   * @param {string} recordName The name of the record to search for.
+   */
+  async searchAndOpenRecord(recordName) {
+    await this.page.waitForSelector(locators.globalSearchInput, { state: 'visible' });
+    await this.page.fill(locators.globalSearchInput, recordName);
+    await this.page.keyboard.press('Enter');
+    await this.page.waitForLoadState('networkidle');
+    // Click on the search result link
+    await this.page.waitForSelector(locators.searchResultsLink(recordName), { state: 'visible' });
+    await this.page.click(locators.searchResultsLink(recordName));
+    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForSelector(locators.recordPageTitle, { state: 'visible' });
+  }
 
-    await this.page.click(locators.statusComboboxButton);
-    await this.page.waitForSelector(locators.statusComboboxOption(status), { state: 'visible' });
-    await this.page.click(locators.statusComboboxOption(status));
+  /**
+   * Edits the owner of an Account/Lead and provides a reassignment reason.
+   * @param {string} newOwnerName The name of the new owner (e.g., 'Pam Beesly').
+   * @param {string} reassignmentReasonText The reason for reassignment (e.g., 'Territory realignment Q4 2024').
+   */
+  async editRecordOwnerAndReason(newOwnerName, reassignmentReasonText) {
+    await this.page.waitForSelector(locators.editButton, { state: 'visible' });
+    await this.page.click(locators.editButton);
+    await this.page.waitForSelector(locators.editFormHeader, { state: 'visible' });
 
-    // Intentionally leave Email field blank
+    // Locate Account Owner lookup field and click icon
+    await this.page.waitForSelector(locators.accountOwnerLookupIcon, { state: 'visible' });
+    await this.page.click(locators.accountOwnerLookupIcon);
 
+    // Interact with the lookup modal
+    await this.page.waitForSelector(locators.lookupModalSearchInput, { state: 'visible' });
+    await this.page.fill(locators.lookupModalSearchInput, newOwnerName);
+    await this.page.waitForTimeout(1000); // Wait for search results to appear
+    await this.page.click(locators.lookupModalSearchResult(newOwnerName));
+
+    // Enter reassignment reason
+    await this.page.waitForSelector(locators.reassignmentReasonTextarea, { state: 'visible' });
+    await this.page.fill(locators.reassignmentReasonTextarea, reassignmentReasonText);
+
+    // Click Save
     await this.page.click(locators.saveButton);
+    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForSelector(locators.successToastMessage, { state: 'visible' });
   }
 
-  async getErrorMessage() {
-    // Prioritize toast message first for global validation rules
-    if (await this.page.locator(locators.toastMessage).isVisible({ timeout: 10000 })) {
-      return await this.page.textContent(locators.toastMessage);
-    }
-    // Fallback to field-level error message if toast not found or not specific enough
-    if (await this.page.locator(locators.emailFieldErrorMessage).isVisible({ timeout: 5000 })) {
-        return await this.page.textContent(locators.emailFieldErrorMessage);
-    }
-    // Fallback to general form error banner
-    if (await this.page.locator(locators.formErrorBanner).isVisible({ timeout: 5000 })) {
-        return await this.page.textContent(locators.formErrorBanner);
-    }
-    return null;
+  /**
+   * Gets the displayed owner name from the detail page.
+   * @returns {Promise<string>} The text content of the owner field.
+   */
+  async getDisplayedOwnerName() {
+    await this.page.waitForSelector(locators.displayedAccountOwner, { state: 'visible' });
+    return await this.page.textContent(locators.displayedAccountOwner);
+  }
+
+  /**
+   * Gets the displayed reassignment reason from the detail page.
+   * @returns {Promise<string>} The text content of the reassignment reason field.
+   */
+  async getDisplayedReassignmentReason() {
+    await this.page.waitForSelector(locators.displayedReassignmentReason, { state: 'visible' });
+    return await this.page.textContent(locators.displayedReassignmentReason);
+  }
+
+  /**
+   * Gets the success toast message text.
+   * @returns {Promise<string>} The text content of the success toast message.
+   */
+  async getSuccessMessage() {
+    await this.page.waitForSelector(locators.successToastMessage, { state: 'visible' });
+    return await this.page.textContent(locators.successToastMessage);
+  }
+
+  /**
+   * Gets the record detail page title.
+   * @returns {Promise<string>} The text content of the record page title.
+   */
+  async getRecordPageTitle() {
+    await this.page.waitForSelector(locators.recordPageTitle, { state: 'visible' });
+    return await this.page.textContent(locators.recordPageTitle);
   }
 }
-
-module.exports = LeadPage;
