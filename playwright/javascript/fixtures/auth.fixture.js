@@ -2,8 +2,7 @@ const { test: base, expect } = require('@playwright/test');
 
 const test = base.extend({
   authenticatedPage: async ({ page }, use) => {
-    // Login to Salesforce
-    await page.goto('https://fa-esev-dev18-saasfademo1.ds-fa.oraclepdemos.com/xmlpserver/services/ExternalReportWSSService');
+    await page.goto('some.com');
     await page.waitForSelector('#username', { state: 'visible', timeout: 30000 });
     await page.fill('#username', '/* CREDENTIALS NOT CONFIGURED - Add in Configurations */');
     await page.fill('#password', '/* CREDENTIALS NOT CONFIGURED - Add in Configurations */');
@@ -30,7 +29,7 @@ const test = base.extend({
       await page.locator('a[href*="logout"], a:has-text("Log Out")').first().click();
       await page.waitForLoadState('networkidle');
     } catch (e) {
-      // Logout failed or not needed, continue cleanup
+      // Logout failed, continue cleanup
     }
   },
 });

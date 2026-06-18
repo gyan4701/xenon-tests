@@ -5,44 +5,81 @@ class LeadPage {
     this.page = page;
   }
 
+  /**
+   * Navigates to the Leads tab.
+   */
   async navigateToLeads() {
+    await this.page.waitForSelector(locators.appLauncherIcon);
     await this.page.click(locators.appLauncherIcon);
-    await this.page.waitForSelector(locators.leadsMenuItem, { state: 'visible' });
-    await this.page.click(locators.leadsMenuItem);
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForSelector(locators.newButton, { state: 'visible', timeout: 30000 });
+    await this.page.getByPlaceholder('Search apps and items...').fill('Leads');
+    await this.page.locator(locators.leadsTab).click();
+    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForSelector(locators.listViewSearchInput, { state: 'visible' });
   }
 
-  async createLeadWithoutEmail(lastName, company, status) {
-    await this.page.click(locators.newButton);
-    await this.page.waitForSelector(locators.lastNameInput, { state: 'visible', timeout: 15000 });
-    await this.page.fill(locators.lastNameInput, lastName);
-    await this.page.fill(locators.companyInput, company);
+  /**
+   * Searches for a lead by name and opens its detail page.
+   * @param {string} leadName - The name of the lead to search for.
+   */
+  async searchAndOpenLead(leadName) {
+    await this.page.fill(locators.listViewSearchInput, leadName);
+    await this.page.press(locators.listViewSearchInput, 'Enter');
+    await this.page.waitForSelector(locators.leadRecordLink(leadName), { state: 'visible' });
+    await this.page.click(locators.leadRecordLink(leadName));
+    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForSelector(locators.recordPageTitle, { state: 'visible' });
+  }
 
-    await this.page.click(locators.statusComboboxButton);
-    await this.page.waitForSelector(locators.statusComboboxOption(status), { state: 'visible' });
-    await this.page.click(locators.statusComboboxOption(status));
+  /**
+   * Edits the Lead record to reassign the owner and add a reassignment reason.
+   * @param {string} newOwnerName - The name of the new owner (e.g., 'Pam Beesly').
+   * @param {string} reassignmentReason - The reason for reassignment (e.g., 'Territory realignment Q4 2024').
+   */
+  async reassignLeadOwnerWithReason(newOwnerName, reassignmentReason) {
+    await this.page.click(locators.editButton);
+    await this.page.waitForSelector(locators.editFormHeader, { state: 'visible' });
 
-    // Intentionally leave Email field blank
+    // Click the lookup icon next to the 'Owner ID' field
+    await this.page.locator(locators.ownerIdLookupField).locator('button[title="Search"]', {hasText: 'Search'}).click();
 
+    // Wait for and interact with the lookup modal
+    await this.page.waitForSelector(locators.lookupModalSearchInput, { state: 'visible' });
+    await this.page.fill(locators.lookupModalSearchInput, newOwnerName);
+    await this.page.waitForSelector(locators.lookupModalResult(newOwnerName), { state: 'visible' });
+    await this.page.click(locators.lookupModalResult(newOwnerName));
+
+    // Enter reassignment reason (assuming a custom text area field exists)
+    await this.page.fill(locators.reassignmentReasonTextArea, reassignmentReason);
+
+    // Click Save button
     await this.page.click(locators.saveButton);
+    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForSelector(locators.successToastMessage, { state: 'visible' });
   }
 
-  async getErrorMessage() {
-    // Prioritize toast message first for global validation rules
-    if (await this.page.locator(locators.toastMessage).isVisible({ timeout: 10000 })) {
-      return await this.page.textContent(locators.toastMessage);
-    }
-    // Fallback to field-level error message if toast not found or not specific enough
-    if (await this.page.locator(locators.emailFieldErrorMessage).isVisible({ timeout: 5000 })) {
-        return await this.page.textContent(locators.emailFieldErrorMessage);
-    }
-    // Fallback to general form error banner
-    if (await this.page.locator(locators.formErrorBanner).isVisible({ timeout: 5000 })) {
-        return await this.page.textContent(locators.formErrorBanner);
-    }
-    return null;
+  /**
+   * Retrieves the displayed Lead Owner name from the detail page.
+   * @returns {Promise<string>} The Lead Owner name.
+   */
+  async getLeadOwnerName() {
+    await this.page.waitForSelector(locators.leadOwnerDisplay, { state: 'visible' });
+    return await this.page.textContent(locators.leadOwnerDisplay);
+  }
+
+  /**
+   * Retrieves the displayed Reassignment Reason text from the detail page.
+   * @returns {Promise<string>} The Reassignment Reason text.
+   */
+  async getReassignmentReasonText() {
+    await this.page.waitForSelector(locators.reassignmentReasonDisplay, { state: 'visible' });
+    return await this.page.textContent(locators.reassignmentReasonDisplay);
+  }
+
+  /**
+   * Checks if the success toast message is visible.
+   * @returns {Promise<boolean>} True if the success message is visible, false otherwise.
+   */
+  async isSuccessMessageVisible() {
+    return await this.page.locator(locators.successToastMessage).isVisible();
   }
 }
-
-module.exports = LeadPage;

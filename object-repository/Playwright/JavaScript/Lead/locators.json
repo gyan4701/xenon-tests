@@ -23,6 +23,13 @@
     "lookupModal": {
       "type": "css",
       "value": ".slds-lookup__menu"
+    },
+    "state": {
+      "type": "css",
+      "value": "visible",
+      "source": "TC056",
+      "firstSeen": "2026-06-18",
+      "lastUsed": "2026-06-18"
     }
   }
 }
