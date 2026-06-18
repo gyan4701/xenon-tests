@@ -19,6 +19,10 @@
     "successToastMessage": {
       "type": "css",
       "value": "div.slds-notify--success .toastMessage"
+    },
+    "lookupModal": {
+      "type": "css",
+      "value": ".slds-lookup__menu"
     }
   }
 }
