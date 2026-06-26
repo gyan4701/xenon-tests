@@ -23,6 +23,10 @@
     "lookupModal": {
       "type": "css",
       "value": ".slds-lookup__menu"
+    },
+    "modalTitle": {
+      "type": "css",
+      "value": "h2.slds-text-heading--medium"
     }
   }
 }
