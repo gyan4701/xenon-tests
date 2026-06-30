@@ -1,0 +1,12 @@
+{
+  "LEADPage": {
+    "appLauncherIcon": {
+      "type": "css",
+      "value": "div.appLauncher button.slds-button"
+    },
+    "insufficientPrivilegesToast": {
+      "type": "css",
+      "value": "div.forceToastMessage span.toastMessage, div.slds-notify_container .slds-text-heading_small"
+    }
+  }
+}
