@@ -1,38 +1,21 @@
-const { test: base, expect } = require('@playwright/test');
+import { test as base, expect } from '@playwright/test';
 
-const test = base.extend({
-  authenticatedPage: async ({ page }, use) => {
-    // Login to Salesforce
-    await page.goto('https://fa-esev-dev18-saasfademo1.ds-fa.oraclepdemos.com/xmlpserver/services/ExternalReportWSSService');
-    await page.waitForSelector('#username', { state: 'visible', timeout: 30000 });
-    await page.fill('#username', '/* CREDENTIALS NOT CONFIGURED - Add in Configurations */');
-    await page.fill('#password', '/* CREDENTIALS NOT CONFIGURED - Add in Configurations */');
-    await page.click('#Login');
-    await page.waitForSelector('.slds-global-header, one-app-nav-bar, lightning-app', { state: 'visible', timeout: 60000 });
+export const test = base.extend({
+  user: async ({ page }, use) => {
+    // Step 1: Simulate login to Salesforce as a Business Development Manager (BDM) user.
+    // In a real scenario, this would involve navigating to the login page,
+    // filling in username/password, and clicking login.
+    // For this example, we'll navigate to a base URL and assume the user is logged in.
+    // Replace 'https://your-salesforce-instance.com' with your actual Salesforce URL.
+    await page.goto('https://your-salesforce-instance.com/lightning/page/home');
+    await page.waitForLoadState('networkidle');
 
-    // Handle any welcome modals
-    try {
-      const modal = page.locator('button:has-text("Close"), button[title="Close"]');
-      if (await modal.isVisible({ timeout: 3000 })) {
-        await modal.click();
-      }
-    } catch (e) {
-      // No modal present, continue
-    }
+    // Add an assertion to verify successful login, e.g., checking for a common Salesforce UI element.
+    // This example checks for the global header, which is usually present after login.
+    await expect(page.locator('div.slds-global-header')).toBeVisible();
 
-    // Provide the authenticated page to the test
-    await use(page);
-
-    // Logout after test
-    try {
-      await page.locator('button.branding-userProfile-button, span.uiImage').first().click();
-      await page.waitForSelector('a[href*="logout"], a:has-text("Log Out")', { state: 'visible', timeout: 5000 });
-      await page.locator('a[href*="logout"], a:has-text("Log Out")').first().click();
-      await page.waitForLoadState('networkidle');
-    } catch (e) {
-      // Logout failed or not needed, continue cleanup
-    }
+    await use(page); // Provide the logged-in page object to the test
   },
 });
 
-module.exports = { test, expect };
+export { expect };

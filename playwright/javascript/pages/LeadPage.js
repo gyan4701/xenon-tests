@@ -1,48 +1,38 @@
-const locators = require('../locators/LeadLocators');
+import { Page, expect } from '@playwright/test';
+import { locators } from './LeadLocators';
 
-class LeadPage {
-  constructor(page) {
-    this.page = page;
+export class LeadPage {
+  constructor(public page: Page) {}
+
+  async navigateToLeadsTab() {
+    // Step 2: Navigate to the 'Leads' tab from the App Launcher.
+    await this.page.locator(locators.leadsTab).click();
+    await this.page.waitForLoadState('networkidle');
+    await expect(this.page.locator('h1.slds-page-header__title')).toHaveText('Leads'); // Verify navigation
   }
 
-  async navigateToLeads() {
-    await this.page.click(locators.appLauncherIcon);
-    await this.page.waitForSelector(locators.leadsMenuItem, { state: 'visible' });
-    await this.page.click(locators.leadsMenuItem);
+  async openLeadRecord(leadName: string) {
+    // Step 3: Click on the name of an existing Lead record to open its detail page.
+    await this.page.getByText(leadName, { exact: true }).click();
     await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForSelector(locators.newButton, { state: 'visible', timeout: 30000 });
+    await expect(this.page.locator('h1.slds-page-header__title')).toHaveText(leadName); // Verify record page loaded
   }
 
-  async createLeadWithoutEmail(lastName, company, status) {
-    await this.page.click(locators.newButton);
-    await this.page.waitForSelector(locators.lastNameInput, { state: 'visible', timeout: 15000 });
-    await this.page.fill(locators.lastNameInput, lastName);
-    await this.page.fill(locators.companyInput, company);
-
-    await this.page.click(locators.statusComboboxButton);
-    await this.page.waitForSelector(locators.statusComboboxOption(status), { state: 'visible' });
-    await this.page.click(locators.statusComboboxOption(status));
-
-    // Intentionally leave Email field blank
-
-    await this.page.click(locators.saveButton);
+  async expectDeleteButtonNotVisible() {
+    // Expected output 1: The 'Delete' button is not visible on the Lead record detail page.
+    // We look for a button with the role 'button' and name 'Delete'.
+    await expect(this.page.getByRole('button', { name: 'Delete' })).not.toBeVisible();
   }
 
-  async getErrorMessage() {
-    // Prioritize toast message first for global validation rules
-    if (await this.page.locator(locators.toastMessage).isVisible({ timeout: 10000 })) {
-      return await this.page.textContent(locators.toastMessage);
-    }
-    // Fallback to field-level error message if toast not found or not specific enough
-    if (await this.page.locator(locators.emailFieldErrorMessage).isVisible({ timeout: 5000 })) {
-        return await this.page.textContent(locators.emailFieldErrorMessage);
-    }
-    // Fallback to general form error banner
-    if (await this.page.locator(locators.formErrorBanner).isVisible({ timeout: 5000 })) {
-        return await this.page.textContent(locators.formErrorBanner);
-    }
-    return null;
+  async clickShowMoreActionsDropdown() {
+    // Step 5: Click on the dropdown arrow next to the action buttons to reveal additional actions.
+    await this.page.locator(locators.showMoreActionsDropdown).click();
+    // No specific wait needed, usually opens a dropdown/menu instantly
+  }
+
+  async expectDeleteOptionNotInDropdown() {
+    // Expected output 2: The 'Delete' option is not available in the dropdown action menu.
+    // We look for a menu item with the role 'menuitem' and name 'Delete' within the dropdown.
+    await expect(this.page.getByRole('menuitem', { name: 'Delete' })).not.toBeVisible();
   }
 }
-
-module.exports = LeadPage;
