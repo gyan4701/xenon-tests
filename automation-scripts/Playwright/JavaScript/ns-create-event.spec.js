@@ -13,6 +13,10 @@
 // Date, so once the title heals, the event saves. No type-ahead lookups.
 import { test, expect } from '@playwright/test';
 
+// Fail fast (8s) on the intentional locator defect so the demo doesn't wait out
+// the default timeout before Xenon self-heals.
+test.use({ actionTimeout: 8000 });
+
 async function saveAndVerify(page) {
   await page.locator('#btn_multibutton_submitter').click();
 
@@ -46,10 +50,12 @@ test('Create a calendar Event with a title and time window', async ({ page }) =>
   await page.waitForSelector('#title', { timeout: 30000 });
 
   // ---- INTENTIONAL LOCATOR DEFECT (self-heal target) -------------------------
-  // Real id is #title (label "Title"); #event_title does not exist. Short 8s
-  // timeout so the LOCATOR_FAILURE surfaces quickly in the demo (no 2-min wait)
-  // before Xenon self-heals it to #title.
-  await page.fill('#event_title', `Xenon Kickoff ${stamp}`, { timeout: 8000 });
+  // The Title field is targeted by aria-label, but NetSuite does NOT set an
+  // aria-label on it, so `[aria-label="Title"]` matches nothing and the fill
+  // fails with a LOCATOR_FAILURE. Xenon's self-heal humanizes the selector to
+  // the label "Title" and resolves it via getByRole('textbox', {name:'Title'}),
+  // then the rerun fills the title and the Event saves.
+  await page.fill('[aria-label="Title"]', 'Xenon Kickoff Event');
   // ---------------------------------------------------------------------------
 
   // Extra required fields on Event: start/end time (date/status/organizer default).
