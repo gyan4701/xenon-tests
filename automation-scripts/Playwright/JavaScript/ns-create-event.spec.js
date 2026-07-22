@@ -1,11 +1,12 @@
 // Story 3 — Create a calendar Event (Activity Management).
 // EXPECTED: FAIL on a locator, then Xenon SELF-HEALS it and the rerun passes.
 //
-// The intentional defect: the Title field is targeted with the WRONG id
-// `#event_title`, which does not exist on the form, so the fill times out with a
-// LOCATOR_FAILURE. NetSuite's real id is `#title` (label "Title"), so self-heal's
-// multi-candidate locator block (getByLabel('Title') / getByRole('textbox',
-// {name:'Title'}) / #title) resolves it and the rerun saves.
+// The intentional defect: the Title field is targeted by aria-label, but
+// NetSuite does NOT set an aria-label on it, so `[aria-label="Title"]` matches
+// nothing and the fill fails with a LOCATOR_FAILURE. Xenon's self-heal humanizes
+// the selector to the label "Title" and resolves it via
+// getByRole('textbox', {name:'Title'}), then the rerun fills the title and the
+// Event saves.
 //
 // Everything else is verified and correct: Start/End time (#starttime/#endtime,
 // the extra required fields on Event), Save (#btn_multibutton_submitter), the
@@ -44,8 +45,6 @@ async function saveAndVerify(page) {
 }
 
 test('Create a calendar Event with a title and time window', async ({ page }) => {
-  const stamp = Date.now().toString().slice(-6);
-
   await page.goto('/app/crm/calendar/event.nl');
   await page.waitForSelector('#title', { timeout: 30000 });
 
