@@ -63,41 +63,70 @@ async function fillField(page, role, label, value, { optional = false } = {}) {
 async function selectPicklist(page, label, optionLabel) {
   const combobox = control(page, 'combobox', label).first();
   await expect(combobox, `picklist "${label}" not found`).toBeVisible({ timeout: 15000 });
+  await combobox.scrollIntoViewIfNeeded();
 
-  // Open it, and CONFIRM it opened before looking for the value.
+  const option = page.getByRole('option', { name: optionLabel, exact: true });
+  let optionsSeen = [];
+
+  // Retry the WHOLE open-and-choose, then verify the value committed.
   //
-  // Measured intermittently on Salutation, the first control touched after page load:
-  // Lightning re-renders the form once more just after the fields appear, and a click
-  // that lands during that re-render is swallowed — no error, no dropdown. The failure
-  // then surfaces as `"Mr." is not an option`, which sends the reader to check the org's
-  // picklist configuration for a value that is perfectly valid.
+  // Two distinct races were measured here, and guarding only the first is not enough:
   //
-  // So the retry is on OPENING, and it is a separate step from selecting: only once a
-  // listbox is confirmed on screen does a missing option genuinely mean the value is
-  // wrong for this org.
-  for (let attempt = 1; ; attempt += 1) {
+  //   1. Lightning re-renders the form once more just after the fields appear, and a
+  //      click landing in that window is swallowed — no error, no dropdown.
+  //   2. A dropdown that DID open gets dismissed by that same re-render a moment later.
+  //
+  // An earlier version retried only the opening and then asserted the option separately.
+  // It passed three suite runs locally and still failed in the Execute Agent: the list
+  // opened, the retry was satisfied, the re-render closed it, and the assertion reported
+  // `"Mr." is not an option for "Salutation"` — pointing at org configuration for a value
+  // that is perfectly valid. The page snapshot taken at that moment showed no dropdown
+  // open anywhere and Salutation still on "--None--".
+  //
+  // So the unit of retry has to be the whole interaction, and the exit condition has to
+  // be the committed VALUE rather than any intermediate state. That also closes the
+  // silent-no-op class: a click that selects nothing now fails here rather than at Save.
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
     await combobox.click();
-    const opened = await page
-      .getByRole('option')
-      .first()
+
+    const found = await option
       .waitFor({ state: 'visible', timeout: 5000 })
       .then(() => true)
       .catch(() => false);
-    if (opened) break;
-    if (attempt === 3) {
-      throw new Error(`Picklist "${label}" did not open after ${attempt} attempts.`);
+
+    if (found) {
+      await option.click();
+      // Read the committed value from whichever shape this combobox is. Lightning
+      // renders some picklists as a readonly <input> (value lives in inputValue()) and
+      // others as a button wrapping a span (value lives in innerText()); assuming one
+      // shape silently never matches and burns all four attempts on a value that was set.
+      for (let poll = 0; poll < 10; poll += 1) {
+        const asInput = await combobox.inputValue().catch(() => null);
+        const value = asInput || (await combobox.innerText().catch(() => '')) || '';
+        if (value.includes(optionLabel)) return;
+        await page.waitForTimeout(500);
+      }
+    } else {
+      // Record what WAS on offer, so a genuinely wrong value reports the real list
+      // instead of leaving the reader to guess.
+      const texts = await page.getByRole('option').allInnerTexts();
+      const trimmed = texts.map((/** @type {string} */ t) => t.trim()).filter(Boolean);
+      if (trimmed.length > 0) optionsSeen = trimmed;
     }
+
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.waitForTimeout(500);
   }
 
-  const option = page.getByRole('option', { name: optionLabel, exact: true });
-  await expect(
-    option,
-    `"${optionLabel}" is not an option for "${label}" on this org. Picklist values are ` +
-      `org configuration, and a DEPENDENT picklist only offers values valid for its ` +
-      `controlling field — Business Unit, Primary Lead Source, Service Line and Practice ` +
-      `all carry a "View all dependencies" link on this layout.`,
-  ).toBeVisible({ timeout: 10000 });
-  await option.click();
+  throw new Error(
+    `Could not set "${label}" to "${optionLabel}" after 4 attempts.\n` +
+      (optionsSeen.length
+        ? `Options actually offered: ${optionsSeen.join(' | ')}\n`
+        : `The dropdown never opened.\n`) +
+      `Picklist values are org configuration, and a DEPENDENT picklist only offers ` +
+      `values valid for its controlling field — Business Unit, Primary Lead Source, ` +
+      `Service Line and Practice all carry a "View all dependencies" link on this layout.`,
+  );
 }
 
 /**
