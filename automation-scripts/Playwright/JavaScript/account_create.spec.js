@@ -1,466 +1,169 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import LoginUtil from '../../../../server/utils/loginUtil';
+//
+// Create a Salesforce Account — Execute Agent / sfAuth.js version.
+//
+// WHAT CHANGED FROM THE ORIGINAL, AND WHY
+//
+// 1. No login code at all. The Execute Agent runs `mcp-executor/sfAuth.js` before the
+//    suite: it performs the SOAP login + frontdoor.jsp handoff, writes a Playwright
+//    storageState, and writes the resolved Lightning origin beside it. The service
+//    injects that storageState AND sets it as Playwright's `baseURL`. So the ~150 lines
+//    of LoginUtil / TOTP / session-repair / origin-resolution are not merely unnecessary
+//    here — LoginUtil lived in `server/utils`, which has been retired, so that import
+//    would fail outright. Navigate to RELATIVE paths and the session is already there.
+//
+// 2. Self-contained. Only `@playwright/test` is imported: no fixture, no page object, no
+//    locators module. A suite assembled from several files cannot fail this one on a
+//    missing import.
+//
+// 3. Selectors verified against THIS org, not assumed. Every locator below is a
+//    scan-verified Knowledge Base fact for `Account:create` (match_count 1 on the real
+//    page). That matters most for the address block — see the note above it.
+//
+// 4. Failures are self-diagnosing. A Lightning save can be blocked by a required field
+//    that is not visibly required until you try, so this script reads the error dialog
+//    and names the offending fields instead of timing out on an unrelated assertion.
 
-test('Create Salesforce Account (automated login with TOTP)', async ({ page }) => {
+import { test, expect } from '@playwright/test';
+
+const ACCOUNT_NAME = `Auto Account ${Date.now()}`;
+
+/**
+ * Fill a text input, failing loudly when it is absent.
+ *
+ * The original used a `fillIfVisible` helper that skipped any field it could not see and
+ * logged "Skipped". Against this org that silently skipped FIVE fields (see the address
+ * note below) and the run still reported success — an Account was created with none of
+ * the data the test claimed to enter. A field that should be there and is not is a
+ * finding, so `optional` has to be requested explicitly.
+ */
+async function fillField(page, selector, value, label, { optional = false } = {}) {
+  const field = page.locator(selector);
+  if ((await field.count()) === 0) {
+    if (optional) return false;
+    throw new Error(`Field "${label}" (${selector}) is not on this Account layout.`);
+  }
+  await field.first().fill(value);
+  return true;
+}
+
+/**
+ * Set a Lightning picklist.
+ *
+ * A Lightning combobox is a LISTBOX, not a typeahead. Clicking it and typing sends
+ * first-letter jumps, so a multi-word value selects nothing, raises no error, and leaves
+ * the field empty — measured on a real run where the form looked filled and the save was
+ * rejected for the very fields the script had "set". `selectOption()` is equally wrong:
+ * it is for a native <select>, which Lightning does not render. Click the option.
+ */
+async function selectPicklist(page, comboboxSelector, optionLabel, label) {
+  const combobox = page.locator(comboboxSelector).first();
+  await expect(combobox, `picklist "${label}" not found`).toBeVisible({ timeout: 15000 });
+  await combobox.click();
+  const option = page.getByRole('option', { name: optionLabel, exact: true });
+  await expect(
+    option,
+    `"${optionLabel}" is not an option for "${label}" on this org. ` +
+      `Picklist values are org configuration — check the field in Setup, and note that a ` +
+      `DEPENDENT picklist only offers values valid for its controlling field.`,
+  ).toBeVisible({ timeout: 10000 });
+  await option.click();
+}
+
+/**
+ * Wait for the save to resolve, and explain it when it fails.
+ *
+ * Lightning reports a blocked save two ways at once: "Complete this field." beneath each
+ * offending input, and a "We hit a snag." dialog listing them. Neither is an exception,
+ * so a script that just waits for the record page times out with no clue why.
+ *
+ * Note the dialog lists a compound field by its COMPOUND label — an empty Last Name on a
+ * Lead shows up as "Name" — so the names below are what Salesforce calls them, which is
+ * exactly why printing them beats guessing.
+ */
+async function expectSaveSucceeded(page) {
+  const snag = page.getByRole('dialog', { name: 'We hit a snag.' });
+  const recordPage = page.waitForURL(/\/lightning\/r\/(?:Account\/)?001\w+\/view/i, { timeout: 60000 });
+
+  const blocked = await Promise.race([
+    recordPage.then(() => null),
+    snag
+      .waitFor({ state: 'visible', timeout: 60000 })
+      .then(() => snag)
+      .catch(() => null),
+  ]);
+
+  if (blocked) {
+    const fields = await snag.getByRole('link').allInnerTexts();
+    throw new Error(
+      `Save was rejected. Salesforce is asking for: ${fields.join(', ') || '(none listed)'}.\n` +
+        `These are required by this org's page layout or a validation rule. Some only ` +
+        `become required once other fields are set, so the list can grow between attempts.`,
+    );
+  }
+}
+
+test('Create Salesforce Account', async ({ page }) => {
   test.setTimeout(180000);
 
-  const username = process.env.SF_USERNAME;
-  const password = process.env.SF_PASSWORD;
-  const secret = process.env.SF_TOTP_SECRET;
-
-  const accountName = `Auto Account ${Date.now()}`;
-
-  const loginUtil = new LoginUtil(page);
-
-  const hasSessionCookie = async () => {
-    const state = await page.context().storageState().catch(() => ({}));
-
-    return (state.cookies || []).some((cookie) => {
-      const cookieNameLooksLikeSession = /sid|session|auth/i.test(cookie.name);
-      const cookieDomainLooksLikeSalesforce = /salesforce\.com|force\.com/i.test(
-        cookie.domain || ''
-      );
-
-      return cookieNameLooksLikeSession && cookieDomainLooksLikeSalesforce;
-    });
-  };
-
-  const isLoginScreenVisible = async () => {
-    return (
-      (await page
-        .locator('#username, input[name="username"]')
-        .first()
-        .isVisible({ timeout: 2500 })
-        .catch(() => false)) ||
-      /login|challenge|verification|identity/i.test(page.url())
-    );
-  };
-
-  const isSalesforceContentDoorStuck = () => {
-    const currentUrl = page.url();
-
-    return (
-      /file\.force\.com\/secur\/contentDoor/i.test(currentUrl) ||
-      /my\.salesforce\.com\/\?ec=302/i.test(currentUrl)
-    );
-  };
-
-  const performFreshLogin = async (reason) => {
-    console.log(`🔐 Performing fresh Salesforce TOTP login. Reason: ${reason}`);
-
-    if (!username || !password || !secret) {
-      throw new Error(
-        [
-          'Salesforce session is invalid and credentials are missing.',
-          'Set these environment variables:',
-          'SF_USERNAME',
-          'SF_PASSWORD',
-          'SF_TOTP_SECRET',
-        ].join('\n')
-      );
-    }
-
-    await loginUtil.loginWithTotp({ username, password, secret });
-
-    await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await page.waitForTimeout(3000);
-
-    if (await isLoginScreenVisible()) {
-      throw new Error(
-        `Fresh Salesforce login did not complete. Current URL: ${page.url()}`
-      );
-    }
-
-    console.log('✅ Fresh Salesforce TOTP login completed');
-  };
-
-  const resolveSalesforceOrigin = async () => {
-    const configuredInstance =
-      process.env.SF_INSTANCE_URL ||
-      process.env.SALESFORCE_INSTANCE_URL;
-
-    if (configuredInstance) {
-      const origin = new URL(configuredInstance).origin;
-      console.log(`✅ Using Salesforce origin from env: ${origin}`);
-      return origin;
-    }
-
-    const state = await page.context().storageState().catch(() => ({}));
-    const cookies = state.cookies || [];
-
-    const lightningCookie = cookies.find((cookie) =>
-      /lightning\.force\.com/i.test(cookie.domain)
-    );
-
-    if (lightningCookie?.domain) {
-      const origin = `https://${lightningCookie.domain.replace(/^\./, '')}`;
-      console.log(`✅ Using Salesforce origin from lightning cookie: ${origin}`);
-      return origin;
-    }
-
-    const mySalesforceCookie = cookies.find((cookie) =>
-      /my\.salesforce\.com/i.test(cookie.domain)
-    );
-
-    if (mySalesforceCookie?.domain) {
-      const domain = mySalesforceCookie.domain.replace(/^\./, '');
-      const lightningDomain = domain.replace(
-        '.my.salesforce.com',
-        '.lightning.force.com'
-      );
-
-      const origin = `https://${lightningDomain}`;
-      console.log(`✅ Using Salesforce origin from my.salesforce cookie: ${origin}`);
-      return origin;
-    }
-
-    const forceCookie = cookies.find((cookie) =>
-      /force\.com/i.test(cookie.domain)
-    );
-
-    if (forceCookie?.domain) {
-      const domain = forceCookie.domain.replace(/^\./, '');
-
-      const origin = domain.includes('lightning.force.com')
-        ? `https://${domain}`
-        : `https://${domain.replace('.my.salesforce.com', '.lightning.force.com')}`;
-
-      console.log(`✅ Using Salesforce origin from force.com cookie: ${origin}`);
-      return origin;
-    }
-
-    const currentUrl = page.url();
-
-    if (currentUrl && currentUrl !== 'about:blank') {
-      try {
-        const origin = new URL(currentUrl).origin;
-
-        if (!/login\.salesforce\.com/i.test(origin)) {
-          console.log(`✅ Using Salesforce origin from current page: ${origin}`);
-          return origin;
-        }
-      } catch (error) {
-        // Ignore and throw clear error below.
-      }
-    }
-
-    throw new Error(
-      [
-        'Could not resolve Salesforce org origin.',
-        '',
-        'Recommended fix: add SF_INSTANCE_URL to your .env file:',
-        'SF_INSTANCE_URL=https://enterprise-platform-3896.lightning.force.com',
-        '',
-        `Current URL: ${currentUrl}`,
-      ].join('\n')
-    );
-  };
-
-  const ensureSalesforceSession = async () => {
-    if (await isLoginScreenVisible()) {
-      throw new Error(
-        `Salesforce session is not authenticated. Current URL: ${page.url()}`
-      );
-    }
-
-    if (isSalesforceContentDoorStuck()) {
-      throw new Error(
-        `Salesforce session is stuck in contentDoor redirect. Current URL: ${page.url()}`
-      );
-    }
-  };
-
-  const openSalesforcePathWithSessionRepair = async ({
-    salesforceOrigin,
-    path,
-    expectedUrlPattern,
-    label,
-  }) => {
-    const targetUrl = `${salesforceOrigin}${path}`;
-
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
-      console.log(`📂 Opening ${label}. Attempt ${attempt}: ${targetUrl}`);
-
-      await page.goto(targetUrl, {
-        waitUntil: 'domcontentloaded',
-        timeout: 90000,
-      });
-
-      await page.waitForTimeout(5000);
-
-      const currentUrl = page.url();
-      console.log(`🌐 URL after navigation attempt ${attempt}: ${currentUrl}`);
-
-      const reachedExpectedUrl = expectedUrlPattern.test(currentUrl);
-
-      if (reachedExpectedUrl) {
-        await ensureSalesforceSession();
-        console.log(`✅ ${label} opened`);
-        return;
-      }
-
-      const loginVisible = await isLoginScreenVisible();
-      const contentDoorStuck = isSalesforceContentDoorStuck();
-
-      if (loginVisible || contentDoorStuck || /my\.salesforce\.com\/?$/i.test(currentUrl)) {
-        if (attempt === 1) {
-          await performFreshLogin(
-            loginVisible
-              ? 'Salesforce redirected to login screen'
-              : 'Stored session is stale and Salesforce is stuck in redirect/contentDoor'
-          );
-
-          continue;
-        }
-      }
-
-      if (attempt === 2) {
-        throw new Error(
-          [
-            `Could not open ${label}.`,
-            `Expected URL pattern: ${expectedUrlPattern}`,
-            `Current URL: ${page.url()}`,
-            '',
-            'The stored Salesforce session may be expired. Refresh storageState or check SF_INSTANCE_URL.',
-          ].join('\n')
-        );
-      }
-    }
-  };
-
-  const clickFirstVisible = async (locators, timeout = 30000) => {
-    const deadline = Date.now() + timeout;
-
-    for (const locator of locators) {
-      const remaining = Math.max(deadline - Date.now(), 1000);
-
-      try {
-        await expect(locator.first()).toBeVisible({
-          timeout: Math.min(remaining, 8000),
-        });
-
-        await locator.first().click();
-        return true;
-      } catch (error) {
-        // Try next locator.
-      }
-    }
-
-    throw new Error(`None of the provided locators became visible within ${timeout}ms.`);
-  };
-
-  const fillIfVisible = async (locator, value, label) => {
-    if (await locator.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await locator.fill(value);
-      console.log(`⌨️ Filled ${label}`);
-      return true;
-    }
-
-    console.log(`ℹ️ Skipped ${label}; field not visible on this layout`);
-    return false;
-  };
-
-  // ── 1. Authenticate using existing saved state or TOTP login ───────────────
-  const sessionCookieExists = await hasSessionCookie();
-
-  if (!sessionCookieExists) {
-    console.log('🔐 No Salesforce session cookie found.');
-    await performFreshLogin('No saved Salesforce session cookie found');
-  } else {
-    console.log('▶ Salesforce session cookie found in storageState.json');
-    console.log('ℹ️ Session will be validated by opening the Account page.');
-  }
-
-  const salesforceOrigin = await resolveSalesforceOrigin();
-  console.log(`🌐 Salesforce origin resolved as: ${salesforceOrigin}`);
-
-  // ── 2. Navigate to Account list page with session repair ──────────────────
-  await openSalesforcePathWithSessionRepair({
-    salesforceOrigin,
-    path: '/lightning/o/Account/list?filterName=Recent',
-    expectedUrlPattern: /\/lightning\/o\/Account\/list/i,
-    label: 'Accounts list page',
-  });
-
-  await page.waitForTimeout(2000);
-
-  // ── 3. Open New Account form ──────────────────────────────────────────────
-  console.log('➕ Opening New Account form...');
-
-  await clickFirstVisible(
-    [
-      page.getByRole('button', { name: /^New$/ }),
-      page.getByRole('link', { name: /^New$/ }),
-      page.locator('a[title="New"]'),
-      page.locator('button[name="New"]'),
-      page.locator('button:has-text("New")'),
-    ],
-    60000
-  );
-
-  const accountNameInput = page.locator('input[name="Name"]');
-
-  await expect(accountNameInput).toBeVisible({
-    timeout: 60000,
-  });
-
-  console.log('✅ New Account form is visible');
-
-  // ── 4. Fill Account details ───────────────────────────────────────────────
-  console.log(`📝 Filling Account details: ${accountName}`);
-
-  await accountNameInput.fill(accountName);
-  console.log('⌨️ Filled Account Name');
-
-  await fillIfVisible(page.locator('input[name="Phone"]'), '123-456-7890', 'Phone');
-
-  await fillIfVisible(
-    page.locator('input[name="Website"]'),
-    'https://testaccount.example.com',
-    'Website'
-  );
-
-  await fillIfVisible(
-    page.locator('input[name="NumberOfEmployees"]'),
-    '500',
-    'Number of Employees'
-  );
-
-  const descriptionInput = page.locator('textarea[name="Description"]');
-
-  if (await descriptionInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await descriptionInput.fill('Created by Playwright automated test');
-    console.log('⌨️ Filled Description');
-  }
-
-  const industryPicklist = page
-    .locator(
-      'button[aria-label*="Industry"], button[aria-label="Industry"], [data-field="Industry"] button'
-    )
-    .first();
-
-  if (await industryPicklist.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await industryPicklist.click();
-    console.log('🔘 Opened Industry picklist');
-
-    const technologyOption = page
-      .locator(
-        'lightning-base-combobox-item span[title="Technology"], span[title="Technology"], [role="option"]:has-text("Technology")'
-      )
-      .first();
-
-    await expect(technologyOption).toBeVisible({ timeout: 10000 });
-    await technologyOption.click();
-
-    console.log('✅ Selected Industry: Technology');
-  } else {
-    console.log('ℹ️ Skipped Industry; picklist not visible on this layout');
-  }
-
-  const typePicklist = page
-    .locator(
-      'button[aria-label*="Type"], button[aria-label="Type"], [data-field="Type"] button'
-    )
-    .first();
-
-  if (await typePicklist.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await typePicklist.click();
-    console.log('🔘 Opened Type picklist');
-
-    const prospectOption = page
-      .locator(
-        'lightning-base-combobox-item span[title="Prospect"], span[title="Prospect"], [role="option"]:has-text("Prospect")'
-      )
-      .first();
-
-    await expect(prospectOption).toBeVisible({ timeout: 10000 });
-    await prospectOption.click();
-
-    console.log('✅ Selected Type: Prospect');
-  } else {
-    console.log('ℹ️ Skipped Type; picklist not visible on this layout');
-  }
-
-  await fillIfVisible(
-    page.locator('textarea[name="BillingStreet"]'),
-    '123 Main Street',
-    'Billing Street'
-  );
-
-  await fillIfVisible(
-    page.locator('input[name="BillingCity"]'),
-    'Mumbai',
-    'Billing City'
-  );
-
-  await fillIfVisible(
-    page.locator('input[name="BillingState"]'),
-    'Maharashtra',
-    'Billing State'
-  );
-
-  await fillIfVisible(
-    page.locator('input[name="BillingPostalCode"]'),
-    '400001',
-    'Billing Postal Code'
-  );
-
-  await fillIfVisible(
-    page.locator('input[name="BillingCountry"]'),
-    'India',
-    'Billing Country'
-  );
-
-  await page.screenshot({
-    path: `./reports/salesforce-account-form-filled-${Date.now()}.png`,
-    fullPage: true,
-  });
-
-  // ── 5. Save Account ───────────────────────────────────────────────────────
-  console.log('💾 Saving Account...');
-
-  await clickFirstVisible(
-    [
-      page.locator('button[name="SaveEdit"]'),
-      page.getByRole('button', { name: /^Save$/ }),
-      page.locator('button:has-text("Save")'),
-    ],
-    30000
-  );
-
-  console.log('🔘 Clicked Save button');
-
-  // ── 6. Verify Account creation ────────────────────────────────────────────
-  console.log('🔎 Verifying Account creation...');
-
-  await expect(page).toHaveURL(/\/lightning\/r\/Account\//i, {
-    timeout: 60000,
-  });
-
-  const createdAccountTitle = page
-    .locator('lightning-formatted-text[slot="primaryField"]')
-    .filter({ hasText: accountName })
-    .first();
-
-  const createdAccountAnyText = page
-    .getByText(accountName, { exact: true })
-    .first();
-
-  if (await createdAccountTitle.isVisible({ timeout: 10000 }).catch(() => false)) {
-    await expect(createdAccountTitle).toHaveText(accountName, {
-      timeout: 60000,
-    });
-  } else {
-    await expect(createdAccountAnyText).toBeVisible({
-      timeout: 60000,
-    });
-  }
-
-  await page.screenshot({
-    path: `./reports/salesforce-account-created-${Date.now()}.png`,
-    fullPage: true,
-  });
-
-  console.log(`✅ Account successfully created: ${accountName}`);
+  // The session is pre-authenticated and baseURL is set by the executor, so this is a
+  // relative path. Going straight to the create screen also skips the list view and the
+  // "New" button entirely — fewer steps, fewer things to break.
+  await page.goto('/lightning/o/Account/new');
+
+  // Wait on the ELEMENT, never `waitForLoadState('networkidle')`. Lightning holds
+  // streaming connections open for the page's lifetime, so the network never goes idle
+  // and that wait can only ever time out on a page that is perfectly usable.
+  const accountName = page.locator('[name="Name"]');
+  await expect(accountName).toBeVisible({ timeout: 60000 });
+
+  // --- Account details -----------------------------------------------------
+  // `[name="Name"]` rather than getByLabel('Account Name'): the on-screen label is
+  // "*Account Name" (Lightning prefixes required fields with the marker), and it ADDS
+  // that marker to other fields after a failed save — so a name-based locator that
+  // matched before Save can stop matching after it. The name attribute does not move.
+  await accountName.fill(ACCOUNT_NAME);
+
+  await fillField(page, '[name="Phone"]', '123-456-7890', 'Phone');
+  await fillField(page, '[name="Website"]', 'https://testaccount.example.com', 'Website');
+
+  // --- Billing address -----------------------------------------------------
+  // Lightning's compound Address field uses street / city / province / country /
+  // postalCode as its input names — NOT BillingStreet / BillingCity / BillingState /
+  // BillingCountry / BillingPostalCode, which is what the original script targeted. All
+  // five silently did nothing on this org. State and Country are also PICKLISTS here
+  // (state/country picklists are enabled), so `.fill()` could never have worked on them.
+  await fillField(page, '[name="street"]', '123 Main Street', 'Billing Street');
+  await fillField(page, '[name="city"]', 'Mumbai', 'Billing City');
+  await fillField(page, '[name="postalCode"]', '400001', 'Billing Zip/Postal Code');
+  await selectPicklist(page, '[name="country"]', 'India', 'Billing Country');
+  await selectPicklist(page, '[name="province"]', 'Maharashtra', 'Billing State/Province');
+
+  // Industry and Type are NOT on this org's Account create layout — there is no locator
+  // for either in a full scan of the form. The original script guarded both with
+  // "skip if not visible", so it always skipped them and always reported success.
+  // Number Of Employees IS present but is a combobox here, not the numeric input the
+  // original filled; add it with selectPicklist() if you want it.
+
+  // --- Save ----------------------------------------------------------------
+  // [name="SaveEdit"] is the scan-verified Save. Do not use getByRole('button', {name:
+  // 'Save'}) without scoping — "Save & New" is beside it.
+  await page.locator('[name="SaveEdit"]').click();
+  await expectSaveSucceeded(page);
+
+  // --- Verify on the RECORD page -------------------------------------------
+  // The URL is /lightning/r/<recordId>/view — Lightning does NOT put the object name in
+  // it on a save redirect (it does when you navigate from a list view, hence the
+  // optional group). `001` is Account's key prefix, so this stays object-specific
+  // without depending on a path segment that is only sometimes there. Measured: a
+  // regex requiring /r/Account/ timed out on a save that had SUCCEEDED.
+  // Never assert a saved value on a form control: the create screen is a modal that
+  // closes on success, so an assertion against its inputs can only pass when the save
+  // FAILED. Assert on the record page instead, scoped to the highlights panel — a bare
+  // page.getByText(ACCOUNT_NAME) matches both the header and the details field and
+  // fails strict mode with "resolved to 2 elements".
+  await expect(page).toHaveURL(/\/lightning\/r\/(?:Account\/)?001\w+\/view/i);
+  await expect(
+    page.locator('lightning-formatted-text[slot="primaryField"]'),
+  ).toHaveText(ACCOUNT_NAME, { timeout: 30000 });
 });
