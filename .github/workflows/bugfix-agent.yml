@@ -1,11 +1,25 @@
-# bugFix Agent: scans the files a pull request changes and reports correctness
-# findings as annotations on the diff.
+# bugFix Agent: scans the files a pull request changes for correctness bugs and
+# reports them as annotations on the diff.
 #
-# Advisory to begin with -- it reports and always passes. That is deliberate:
-# the scanner's measured precision on real code is 32-44%, so a check that
-# blocked from day one would block mostly on things that are not defects, and
-# the team would learn to bypass it. Watch it for a few weeks, then set
-# `enforce: 'true'` and add this check to branch protection.
+# Advisory to begin with -- it reports and always passes. The scanner's measured
+# precision on real code is 32-44%, so a check that blocked from day one would
+# block mostly on things that are not defects, and the team would learn to
+# bypass it. Watch it on real pull requests, then set ENFORCE below and add this
+# check to branch protection.
+#
+# The steps are written out here rather than calling the composite action in
+# gyan4701/bugFixAgent, and that is not a style choice. GitHub resolves every
+# `uses:` during "Prepare all required actions", before any step runs, using
+# this workflow's own GITHUB_TOKEN -- which is scoped to this repository. While
+# bugFixAgent is private that download fails with `Unable to resolve action`,
+# and no token input on the action can help, because the action itself was never
+# fetched. `actions/checkout` accepts a token, so the agent is checked out as a
+# normal step instead.
+#
+# Once bugFixAgent is public -- or once its Settings -> Actions -> General ->
+# Access allows this account's repositories -- all of this collapses to:
+#
+#     - uses: gyan4701/bugFixAgent/action@main
 name: bugFix Agent
 
 on:
@@ -22,6 +36,11 @@ permissions:
   contents: read
   security-events: write # upload SARIF to code scanning
 
+env:
+  # Flip to --enforce to make high-confidence findings block the merge.
+  ENFORCE_FLAG: '--advisory'
+  MAX_FILES: '10'
+
 jobs:
   scan:
     name: Scan changed files
@@ -31,24 +50,74 @@ jobs:
     # check that examined nothing.
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out this repository
+        uses: actions/checkout@v4
         with:
           # The merge base is needed to work out what the pull request changed.
-          # A shallow checkout cannot see it and the scan exits 2 rather than
+          # A shallow checkout cannot see it, and the scan exits 2 rather than
           # guessing.
           fetch-depth: 0
 
-      - uses: gyan4701/bugFixAgent/action@main
+      - name: Check out the agent
+        uses: actions/checkout@v4
         with:
-          enforce: 'false'
-          limit: '10'
-          # bugFixAgent is a private repository, and a workflow's own
-          # GITHUB_TOKEN is scoped to the repository it runs in. Remove this
-          # once that repository is public.
-          agent-token: ${{ secrets.AGENT_TOKEN }}
+          repository: gyan4701/bugFixAgent
+          ref: main
+          path: .bugfix-agent
+          # Needed only while bugFixAgent is private.
+          token: ${{ secrets.AGENT_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: .bugfix-agent/pyproject.toml
+
+      - name: Install the agent
+        run: pip install -e .bugfix-agent
+
+      - name: Install oxlint
+        run: |
+          # Globally, so it lands on PATH. A local npm install puts it in
+          # ./node_modules/.bin, which is neither on PATH nor a directory the
+          # agent searches -- so the JavaScript static signal would simply be
+          # absent, with a scan that still looked like it worked.
+          npm install -g --no-audit --no-fund oxlint@^1.75.0
+          # Fail here rather than degrade quietly. A missing oxlint is a
+          # reasonable "no static hits" on a developer's machine and wrong in a
+          # pipeline: a check that silently stops checking is worse than a red one.
+          oxlint --version
+
+      - name: Scan changed files
         env:
           AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
           AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
           AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
           FINDER_MODEL: azure/xenon-gpt-5-mini
           VERIFIER_MODEL: azure/xenon-gpt-5-mini
+          # Never inherited from a checked-out .env: SSL_VERIFY=false is a local
+          # workaround for TLS interception and would be a real hole here.
+          SSL_VERIFY: 'true'
+        run: |
+          set -o pipefail
+          set +e
+          bugfinder ci \
+            --base "origin/${GITHUB_BASE_REF}" \
+            --path . \
+            --limit "${MAX_FILES}" \
+            --sarif bugfinder.sarif \
+            --summary bugfinder-summary.md \
+            "${ENFORCE_FLAG}"
+          STATUS=$?
+          set -e
+          [ -f bugfinder-summary.md ] && cat bugfinder-summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $STATUS
+
+      # always(), so findings are still published when the gate failed. Without
+      # it the run that most needs its annotations is the one that never gets them.
+      - name: Upload findings to code scanning
+        if: always() && hashFiles('bugfinder.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bugfinder.sarif
+          category: bugfinder
