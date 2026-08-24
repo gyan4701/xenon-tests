@@ -1,0 +1,54 @@
+# bugFix Agent: scans the files a pull request changes and reports correctness
+# findings as annotations on the diff.
+#
+# Advisory to begin with -- it reports and always passes. That is deliberate:
+# the scanner's measured precision on real code is 32-44%, so a check that
+# blocked from day one would block mostly on things that are not defects, and
+# the team would learn to bypass it. Watch it for a few weeks, then set
+# `enforce: 'true'` and add this check to branch protection.
+name: bugFix Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Three pushes to a pull request should cost one scan, not three, and only the
+# last one's findings are current.
+concurrency:
+  group: bugfix-agent-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write # upload SARIF to code scanning
+
+jobs:
+  scan:
+    name: Scan changed files
+    runs-on: ubuntu-latest
+    # A pull request from a fork gets no secrets, so the model cannot be reached
+    # and the scan cannot run. Skipping is honest; passing would be a green
+    # check that examined nothing.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The merge base is needed to work out what the pull request changed.
+          # A shallow checkout cannot see it and the scan exits 2 rather than
+          # guessing.
+          fetch-depth: 0
+
+      - uses: gyan4701/bugFixAgent/action@main
+        with:
+          enforce: 'false'
+          limit: '10'
+          # bugFixAgent is a private repository, and a workflow's own
+          # GITHUB_TOKEN is scoped to the repository it runs in. Remove this
+          # once that repository is public.
+          agent-token: ${{ secrets.AGENT_TOKEN }}
+        env:
+          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+          AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
+          FINDER_MODEL: azure/xenon-gpt-5-mini
+          VERIFIER_MODEL: azure/xenon-gpt-5-mini
