@@ -38,7 +38,7 @@ jobs:
           # guessing.
           fetch-depth: 0
 
-      - uses: gyan4701/bugFixAgent/action@feature/js-ts-support
+      - uses: gyan4701/bugFixAgent/action@main
         with:
           enforce: 'false'
           limit: '10'
