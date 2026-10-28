@@ -27,7 +27,7 @@ test('Start a job requisition from a Job', async ({ page }) => {
   // Step 1 How to start: create from a Job
   await expect(page.getByRole('heading', { name: 'Step 1 of 12 How to start', exact: true })).toBeVisible({ timeout: 60000 });
   const using = page.getByRole('combobox', { name: 'Create Requisition Using', exact: true });
-  await expect(using).toBeVisible({ timeout: 30000 });
+  await expect(using).toBeVisible({ timeout: 90000 }); // fa-esev-dev18 can take over 30 s to draw the fields
   await using.focus();
   await page.keyboard.press('ArrowDown');
   const job = page
@@ -38,8 +38,8 @@ test('Start a job requisition from a Job', async ({ page }) => {
   await expect(job).toBeVisible({ timeout: 30000 });
   await job.click();
 
-  // Creating from a Job asks for the Business Unit and the Job next
-  await expect(page.getByRole('combobox', { name: 'Business Unit', exact: true })).toBeVisible({ timeout: 30000 });
-  await expect(page.getByRole('combobox', { name: 'Job', exact: true })).toBeVisible({ timeout: 30000 });
+  // Creating from a Job asks for the Job next (fa-etar-dev11 also asked for a Business Unit
+  // here; fa-esev-dev18 does not, so only the Job field is checked)
+  await expect(page.getByRole('combobox', { name: 'Job', exact: true })).toBeVisible({ timeout: 60000 });
   console.log('STARTED: Create Requisition Using = Job');
 });
